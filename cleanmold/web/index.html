@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cleanmold</title>
+<link rel="icon" type="image/svg+xml" href="marca/icone.svg">
+<link rel="icon" type="image/png" sizes="256x256" href="marca/icone-256.png">
+<link rel="icon" type="image/png" sizes="32x32" href="marca/icone-32.png">
+<link rel="stylesheet" href="app.css">
+<script type="importmap">{"imports": {"three": "./vendor/three.module.min.js"}}</script>
+</head>
+<body>
+<header class="topo">
+  <div class="marca">
+    <svg class="logo" viewBox="8 6 84 88" role="img" aria-label=""><path fill="currentColor" fill-rule="evenodd" d="M46.32 89.85C45.78 89.72 45.00 89.21 44.70 88.80C44.41 88.40 44.22 87.84 43.25 84.47C42.67 82.49 42.43 81.93 41.88 81.31C41.44 80.81 40.58 80.19 40.04 79.98C39.34 79.71 36.46 78.39 35.96 78.11C34.68 77.38 33.53 77.38 32.37 78.11C31.78 78.48 28.62 80.55 28.17 80.85C27.61 81.24 27.12 81.37 26.38 81.33C25.29 81.27 25.10 81.13 21.94 78.00C17.80 73.91 17.84 74.32 21.11 69.68C22.88 67.16 22.89 67.11 21.71 64.55C21.28 63.61 20.78 62.48 20.60 62.03C20.04 60.68 19.05 59.67 17.87 59.25C13.40 57.66 12.89 57.40 12.35 56.43L12.06 55.91L12.03 51.18L12.00 46.44L12.31 45.83C12.83 44.76 13.18 44.56 16.60 43.40C19.29 42.48 19.79 41.99 20.89 39.15C21.47 37.65 21.60 37.33 22.23 35.93C22.51 35.29 22.56 35.07 22.56 34.46C22.55 33.51 22.47 33.33 20.81 31.07C19.10 28.72 18.93 28.28 19.29 27.06C19.46 26.49 19.32 26.66 22.69 23.05C25.82 19.70 25.83 19.70 27.12 19.69C27.90 19.69 27.80 19.65 31.88 21.75C33.33 22.49 33.36 22.50 34.10 22.51C34.83 22.51 34.86 22.50 36.44 21.71C37.32 21.28 38.61 20.65 39.31 20.31C40.43 19.78 40.66 19.62 41.26 19.01C42.18 18.07 42.31 17.78 43.37 14.45L44.28 11.57L44.82 11.03C45.66 10.19 45.49 10.22 50.71 10.18C57.38 10.13 57.09 9.99 58.36 13.83C59.69 17.84 59.85 18.16 61.10 19.34C62.17 20.35 63.43 21.09 64.96 21.62C66.71 22.22 66.43 22.20 76.07 22.26C84.05 22.31 84.94 22.33 85.21 22.48C85.80 22.80 86.23 23.50 86.23 24.13C86.23 24.91 86.05 25.18 84.27 27.05C83.32 28.04 82.17 29.28 81.70 29.80C81.08 30.48 80.69 30.82 80.29 31.02L79.74 31.30L72.44 31.33C66.13 31.35 65.05 31.33 64.48 31.20C63.49 30.97 62.61 30.61 61.70 30.06C52.37 24.39 40.89 26.85 33.46 36.09C31.70 38.29 29.82 41.81 29.15 44.20C28.35 47.01 28.11 48.55 28.10 50.83C28.05 61.91 36.84 71.81 47.95 73.19C52.78 73.79 57.26 72.88 61.52 70.46C62.35 69.98 63.23 69.62 64.16 69.36C64.75 69.20 65.41 69.19 72.61 69.19L80.42 69.19L81.18 69.52C81.82 69.79 82.11 70.00 82.99 70.84C84.88 72.64 87.03 74.65 87.41 74.98C88.42 75.86 88.24 77.56 87.07 78.11L86.62 78.32L76.68 78.32C67.97 78.32 66.62 78.34 65.81 78.48C63.37 78.90 61.07 80.22 59.97 81.84C59.54 82.46 59.35 82.96 58.36 86.01C57.52 88.60 57.47 88.72 56.97 89.16C56.12 89.91 56.25 89.89 51.17 89.91C48.67 89.92 46.49 89.89 46.32 89.85Z"/></svg>
+    <span>Cleanmold</span>
+  </div>
+  <nav class="menus" aria-label="Menus">
+    <div class="menu"><button aria-haspopup="true" aria-expanded="false">Arquivo</button>
+      <div class="menu-caixa" hidden>
+        <button data-acao="abrir">Abrir malha…</button>
+        <hr>
+        <button data-acao="exportar" data-precisa-limpa>Gerar arquivos…</button>
+      </div></div>
+    <div class="menu"><button aria-haspopup="true" aria-expanded="false">Alvos</button>
+      <div class="menu-caixa" hidden>
+        <button data-acao="marcar-todos" data-precisa>Marcar todos</button>
+        <button data-acao="marcar-seguros" data-precisa>Marcar só os de confiança alta</button>
+        <button data-acao="desmarcar" data-precisa>Desmarcar todos</button>
+        <hr>
+        <button data-acao="manual" data-precisa>Indicar à mão um alvo que faltou…</button>
+        <hr>
+        <button data-acao="limpar" data-precisa>Retirar os alvos marcados</button>
+      </div></div>
+    <div class="menu"><button aria-haspopup="true" aria-expanded="false">Sólido</button>
+      <div class="menu-caixa" hidden>
+        <button data-acao="solido" data-precisa>Reconhecer peça de revolução</button>
+      </div></div>
+    <div class="menu"><button aria-haspopup="true" aria-expanded="false">Análise</button>
+      <div class="menu-caixa" hidden>
+        <button data-acao="reanalisar" data-arquivo>Procurar os alvos de novo</button>
+        <hr>
+        <button data-acao="registro">Ver registro</button>
+      </div></div>
+    <div class="menu"><button aria-haspopup="true" aria-expanded="false">Ajuda</button>
+      <div class="menu-caixa" hidden>
+        <button data-acao="ajuda">Como usar</button>
+        <button data-acao="sobre">Sobre o Cleanmold</button>
+      </div></div>
+  </nav>
+  <div class="topo-arquivo"><span class="mono" id="topoArquivo"></span><span class="fraco" id="topoQuando"></span></div>
+  <div class="topo-acoes">
+    <button class="bt" data-acao="abrir">Abrir malha</button>
+    <button class="bt primario" id="btPrincipal" disabled>Retirar alvos</button>
+  </div>
+</header>
+
+<div class="corpo">
+  <aside class="esq" aria-label="Malha">
+    <section>
+      <h2 class="rotulo">Malha</h2>
+      <div class="cartao" id="cartaoMalha"><div class="fraco">Nenhuma malha aberta</div></div>
+    </section>
+    <section id="secResumo" hidden>
+      <h2 class="rotulo">Resumo</h2>
+      <div class="resumo-nums" id="resumoNums"></div>
+    </section>
+    <section id="secOpcoes" hidden>
+      <h2 class="rotulo">Recorte</h2>
+      <label class="opcao">Margem em volta do recorte (mm)<input type="text" id="opMargem" inputmode="decimal" autocomplete="off">
+        <small>Quanto o furo entra na superfície limpa antes de ser fechado.</small></label>
+      <label class="opcao">Alcance das rebarbas (mm)<input type="text" id="opAlcance" inputmode="decimal" autocomplete="off">
+        <small>Até onde, em volta do pé, o que estiver grudado nele é recortado quando a rebarba não termina sozinha.</small></label>
+      <label class="marcar"><input type="checkbox" id="opSoltos" checked> Apagar pedaços soltos</label>
+    </section>
+    <section id="secIdent" hidden>
+      <h2 class="rotulo">Identificação</h2>
+      <label class="campo">Peça / desenho<input type="text" id="idPeca" placeholder="a informar" autocomplete="off"></label>
+      <label class="campo">Responsável<input type="text" id="idResp" placeholder="a informar" autocomplete="off"></label>
+    </section>
+  </aside>
+
+  <section class="centro">
+    <div class="ferr">
+      <div class="ferr-grupo" role="group" aria-label="Ferramentas">
+        <button class="icone ativo" data-ferr="selecionar" aria-label="Selecionar" title="Selecionar: clique num alvo para vê-lo na lista">
+          <svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 2-2 6z"/></svg></button>
+        <button class="icone" data-ferr="mover" aria-label="Mover a vista" title="Mover a vista: arraste para deslocar">
+          <svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg></button>
+        <button class="icone" data-ferr="manual" aria-label="Indicar um alvo à mão" title="Indicar à mão um alvo que faltou: clique no pé dele" disabled>
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg></button>
+        <button class="icone" id="btAjustar" aria-label="Ajustar à tela" title="Ajustar à tela">
+          <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+      </div>
+      <div class="sep"></div>
+      <div class="fases" role="tablist" aria-label="O que mostrar">
+        <button role="tab" data-fase="antes" disabled>Antes</button>
+        <button role="tab" data-fase="depois" disabled>Depois</button>
+        <button role="tab" data-fase="solido" disabled>Sólido</button>
+      </div>
+      <div class="sep"></div>
+      <div class="p3-grupo"><span class="p3-nome">Vista</span>
+        <div class="seg"><button data-cam="iso" class="ativo">Isométrica</button><button data-cam="cima">Cima</button><button data-cam="frente">Frente</button><button data-cam="lado">Lado</button></div></div>
+      <div class="espaco"></div>
+      <label class="desl" id="grpOpacidade" hidden title="Transparência da malha escaneada sobre o sólido">Malha<input type="range" id="opMalha" min="0" max="100" value="35"></label>
+    </div>
+
+    <div class="vista" id="vista">
+      <div id="v3d" class="camada v3d">
+        <div class="area3d" id="area3d">
+          <canvas id="tela"></canvas>
+          <div class="dica-ferr" id="dicaManual" hidden>
+            <span>Clique no <b>pé</b> do alvo que faltou</span>
+            <label>Ø do recorte <input type="text" id="manDiam" value="19" inputmode="decimal"> mm</label>
+            <button type="button" id="manSair">Terminar</button>
+          </div>
+          <div class="legenda-cores" id="legendaCores" hidden></div>
+        </div>
+      </div>
+      <div class="vazio" id="vazio">
+        <div class="vazio-caixa">
+          <div class="vazio-erro" id="vazioErro" role="alert" hidden></div>
+          <h1>Abra a malha escaneada</h1>
+          <p>Exporte a malha do Control X ou do Design X em STL, em milímetros, com os alvos como saíram do escaneamento. Não precisa alinhar nem separar nada.</p>
+          <button class="bt primario grande" data-acao="abrir">Abrir malha</button>
+          <p class="fraco">ou arraste o arquivo (STL, PLY, OBJ ou OFF) para esta janela</p>
+        </div>
+      </div>
+      <div class="progresso" id="progresso" hidden>
+        <div class="progresso-caixa">
+          <div class="prog-linha"><h2 id="progTitulo">Procurando os alvos</h2><span class="prog-pct mono" id="progPct">0 %</span></div>
+          <div class="trilho"><div class="andamento" id="progBarra"></div></div>
+          <p class="fraco" id="progNota" style="margin:10px 0 0"></p>
+        </div>
+      </div>
+      <div class="soltar" id="soltar" hidden><span>Solte o arquivo para abrir</span></div>
+    </div>
+  </section>
+
+  <aside class="dir" aria-label="Alvos">
+    <div class="dir-vazio" id="dirVazio">
+      <div class="forte grande">Como funciona</div>
+      <ol class="passos">
+        <li><b>Abra a malha.</b> O Cleanmold procura os alvos pelo padrão deles: o pé cilíndrico em pé sobre a peça e o corpo em cima (pescoço, esfera, dodecaedro), mesmo amassado ou partido em pedaços soltos.</li>
+        <li><b>Confira a lista.</b> Cada alvo aparece em verde no modelo. Desmarque o que não for alvo; indique à mão o que tiver faltado.</li>
+        <li><b>Retire.</b> O alvo é recortado e o furo é fechado continuando a superfície que está em volta: plano, cilindro, esfera, cone ou superfície suave, com aresta viva quando o alvo estava na beirada.</li>
+        <li><b>Gere os arquivos.</b> Malha limpa em STL, relatório do que foi feito e, para peça de revolução, sólido STEP e macro que reconstrói a peça no SolidWorks.</li>
+      </ol>
+    </div>
+    <div class="dir-cheio" id="dirCheio" hidden></div>
+  </aside>
+</div>
+
+<footer class="status">
+  <span class="st-estado"><i id="stPonto"></i><span id="stTexto">Pronto para abrir uma malha</span></span>
+  <span class="fraco" id="stConta"></span>
+  <span class="espaco"></span>
+  <span class="fraco">Unidade: mm</span>
+  <span class="fraco" id="stVersao">Cleanmold</span>
+</footer>
+
+<!-- gerar arquivos -->
+<div class="fundo" id="mExportar" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="tExp">
+    <header><h2 id="tExp">Gerar arquivos</h2><button class="fechar" data-fechar aria-label="Fechar">×</button></header>
+    <div class="modal-corpo">
+      <fieldset class="itens" id="expItens">
+        <legend>O que gerar</legend>
+        <label class="item-exp"><input type="checkbox" value="stl"><span><b>Malha limpa</b><i>STL binário, para voltar ao Control X, ao Design X ou abrir no SolidWorks</i></span></label>
+        <label class="item-exp"><input type="checkbox" value="pdf"><span><b>Relatório da limpeza</b><i>PDF: cada alvo, a referência usada no remendo e o que conferir</i></span></label>
+        <label class="item-exp" id="itStep"><input type="checkbox" value="step"><span><b>Sólido 3D</b><i>STEP de corpo único (abre como peça) e o perfil em DXF</i><small></small></span></label>
+        <label class="item-exp" id="itMacro"><input type="checkbox" value="macro"><span><b>Macro do SolidWorks</b><i>Reconstrói a peça passo a passo, com esboço, cotas e árvore de projeto</i><small></small></span></label>
+        <div class="itens-sec">
+          <label class="marcar"><input type="checkbox" value="ply"> Malha em PLY</label>
+          <label class="marcar"><input type="checkbox" value="html"> Relatório em HTML</label>
+          <label class="marcar"><input type="checkbox" value="csv"> Planilha CSV</label>
+        </div>
+      </fieldset>
+      <label class="campo">Gravar em
+        <span class="linha"><input type="text" id="expPasta" spellcheck="false" class="mono"><button class="bt" id="btPasta" type="button">Escolher pasta</button></span>
+      </label>
+      <div class="exp-resultado" id="expResultado" hidden></div>
+    </div>
+    <footer><button class="bt" data-fechar>Fechar</button><button class="bt primario" id="btGerar">Gerar</button></footer>
+  </div>
+</div>
+
+<div class="fundo" id="mTexto" hidden>
+  <div class="modal largo" role="dialog" aria-modal="true" aria-labelledby="tTexto">
+    <header><h2 id="tTexto"></h2><button class="fechar" data-fechar aria-label="Fechar">×</button></header>
+    <div class="modal-corpo" id="textoCorpo"></div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

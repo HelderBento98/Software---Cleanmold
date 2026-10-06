@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+
+# montagem do instalador
+/obra/
+/saida/
+*.exe
+
+# Python portátil e bibliotecas baixadas (instalação pelo .zip)
+/WPy64-*/
+/python/
+/pacotes/
+
+# Malhas de peças NUNCA entram no repositório: só as peças de teste sintéticas (testes/dados/*.npz).
+*.stl
+*.ply
+*.obj
+*.off
+
+# arquivos gerados ao usar o programa na própria pasta
+*_limpeza.html
+*_limpeza.pdf
+*_limpeza.csv
+*_solido.step
+*_perfil.dxf
+*_solidworks.swb
+!/exemplos/*

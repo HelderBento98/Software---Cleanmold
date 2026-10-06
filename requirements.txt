@@ -1,0 +1,9 @@
+# Versoes exatas com que o Cleanmold 1.0.x foi validado (VALIDAR.bat) em Python 3.13 de 64 bits. As mesmas do Enmold 2.3.x.
+# Fixas de proposito: uma versao nova de biblioteca nao muda os resultados sem passar pela validacao.
+numpy==2.4.6
+scipy==1.17.1
+trimesh==5.1.1
+matplotlib==3.11.2
+ezdxf==1.4.4
+cadquery==2.8.0
+cadquery-ocp==7.9.3.1.1

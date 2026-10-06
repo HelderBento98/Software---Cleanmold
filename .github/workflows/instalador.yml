@@ -1,0 +1,68 @@
+# Monta, valida e testa o instalador do Cleanmold num Windows de verdade.
+# Botão "Run workflow" (aba Actions): com "Publicar" marcado, o instalador e o pacote .zip vão para Releases
+# com a marca v<versão de cleanmold/__init__.py>; sem marcar, ficam só nos Artifacts da execução, por 3 dias.
+# Também roda (e publica) quando uma marca v* é enviada pelo git.
+name: Instalador
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publicar:
+        description: 'Publicar em Releases (se passar em todos os testes)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      PUBLICAR: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.publicar == true }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Conferir a versão
+        shell: pwsh
+        run: |
+          $versao = (Select-String -Path cleanmold/__init__.py -Pattern '__version__ = "(.+?)"').Matches[0].Groups[1].Value
+          "VERSAO=$versao" >> $env:GITHUB_ENV
+          if ($env:GITHUB_REF -like 'refs/tags/v*' -and "v$versao" -ne $env:GITHUB_REF_NAME) {
+            Write-Host "::error title=Versão::A marca $env:GITHUB_REF_NAME não bate com a versão $versao de cleanmold/__init__.py"
+            exit 1
+          }
+          if ($env:PUBLICAR -eq 'true') {
+            gh release view "v$versao" --repo $env:GITHUB_REPOSITORY *> $null
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "::error title=Versão já publicada::Já existe a versão $versao em Releases. Aumente o número em cleanmold/__init__.py antes de publicar de novo."
+              exit 1
+            }
+          }
+          $global:LASTEXITCODE = 0
+
+      - name: Montar, validar e testar
+        shell: pwsh
+        run: ./instalador/montar.ps1
+
+      - name: Guardar o instalador
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cleanmold
+          path: |
+            saida/Cleanmold_Setup_*.exe
+            saida/Cleanmold_*.zip
+          retention-days: 3
+
+      - name: Publicar em Releases
+        if: env.PUBLICAR == 'true'
+        shell: pwsh
+        run: |
+          $arquivos = (Get-ChildItem saida -File).FullName
+          gh release create "v$env:VERSAO" $arquivos --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "Cleanmold $env:VERSAO" --notes-file obra/NOTAS.md
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Write-Host "::notice title=Publicado::Cleanmold $env:VERSAO está em Releases."

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang='pt-BR'><head><meta charset='utf-8'><title>Cleanmold — LEIA-ME</title><style>
+body{font-family:Segoe UI,Arial,sans-serif;font-size:15px;line-height:1.55;color:#1a1f25;max-width:900px;margin:32px auto;padding:0 24px}
+h1{font-size:26px;color:#0f7a4d;margin:0 0 4px} h2{font-size:19px;margin:32px 0 8px;padding-top:14px;border-top:1px solid #e3e6ea}
+h3{font-size:15.5px;margin:22px 0 6px} code{font-family:Consolas,monospace;font-size:13.5px;background:#e8f5ee;padding:1px 4px;border-radius:3px}
+pre{background:#f6f7f9;border:1px solid #e3e6ea;border-radius:6px;padding:10px 12px;overflow:auto} pre code{background:none;padding:0}
+table{border-collapse:collapse;margin:10px 0;font-size:14px} th,td{border:1px solid #d5d9df;padding:5px 9px;text-align:left;vertical-align:top}
+th{background:#1a1f25;color:#fff;font-weight:600} a{color:#0d6b43} li{margin:3px 0}
+@media print{body{margin:0;max-width:none;font-size:11pt} h2{break-after:avoid}}
+</style></head><body>
+<h1>Cleanmold</h1>
+<p>Retira os alvos de escaneamento de uma malha 3D e fecha os furos continuando a superfície da peça que está em volta. Da mesma família do Enmold.</p>
+<p>Tudo roda no computador: a malha, a análise e os arquivos não são enviados pela internet.</p>
+<h2>Instalar</h2>
+<p>Execute o <code>Cleanmold_Setup_&lt;versão&gt;.exe</code>. Instala só para o seu usuário, sem senha de administrador e sem internet, e ocupa cerca de 1,2 GB. O instalador não tem assinatura digital: no aviso do Windows, clique em <em>Mais informações &gt; Executar assim mesmo</em>.</p>
+<p>Depois de instalado, o Cleanmold fica no Menu Iniciar e na Área de Trabalho. Para atualizar, rode o instalador novo por cima.</p>
+<h2>Usar</h2>
+<ol>
+<li><strong>Exporte a malha</strong> do Control X ou do Design X em STL (também PLY, OBJ ou OFF), em milímetros, com os alvos como saíram do escaneamento. Não precisa alinhar nem separar nada.</li>
+<li><strong>Abrir malha.</strong> A procura dos alvos começa sozinha. Numa malha de 8 milhões de triângulos leva cerca de um minuto.</li>
+<li><strong>Confira a lista.</strong> Cada alvo aparece em verde no modelo e numa linha da lista, com a confiança. Clique numa linha para ver o alvo de perto.
+   - Não é alvo: desmarque a linha. Fica em laranja e não é tocado.
+   - Faltou um alvo: use a ferramenta com a mira, na barra de cima, informe o diâmetro do recorte e clique no <strong>pé</strong> do alvo.</li>
+<li><strong>Retirar e fechar os furos.</strong> Depois, use <strong>Antes</strong> e <strong>Depois</strong> para comparar. Os remendos aparecem em verde-claro.</li>
+<li><strong>Gerar arquivos:</strong> malha limpa (STL), relatório (PDF) e, para peça de revolução, sólido (STEP) e macro do SolidWorks.</li>
+</ol>
+<h3>No modelo 3D</h3>
+<p>Arraste para girar, role para aproximar, botão direito para mover. Os botões de vista (Isométrica, Cima, Frente, Lado) usam os eixos da própria malha.</p>
+<h2>O que o Cleanmold entende por alvo</h2>
+<p>Um alvo não é procurado pela malha exata dele, e sim pelo padrão:</p>
+<ul>
+<li>um <strong>pé cilíndrico</strong> de diâmetro conhecido em pé sobre a peça (a base magnética: Ø 18,8 mm no peão, Ø 14,9 mm no dado com base);</li>
+<li>acima do pé, um corpo cujo perfil de raios lembra o de um alvo: ressalto, pescoço fino, esfera, dodecaedro.</li>
+</ul>
+<p>O corpo pode vir amassado, torto, com caroços ou partido em pedaços soltos. O que decide é o pé e o que vem logo acima dele. Quando o pé também saiu amassado (um caroço em vez de um cilindro), o alvo é achado pela esfera ou pelo dodecaedro que sobraram e aparece como <strong>pé amassado</strong>.</p>
+<p>Tipos que vêm com o programa:</p>
+<table>
+<thead>
+<tr>
+<th>Tipo</th>
+<th>Pé</th>
+<th>Corpo</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Peão magnético</td>
+<td>Ø 18,8 × 6 mm</td>
+<td>pescoço e esfera Ø 9,8 mm; 25 mm de altura</td>
+</tr>
+<tr>
+<td>Peão com dado impresso</td>
+<td>Ø 18,8 × 6 mm</td>
+<td>esfera Ø 15,3 mm e dodecaedro em cima; 59 mm de altura</td>
+</tr>
+<tr>
+<td>Dado com base cilíndrica</td>
+<td>Ø 14,9 × 4 mm</td>
+<td>dodecaedro apoiado direto na base; 29 mm de altura</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Pedaços soltos</strong> (esferas, dodecaedros e lascas que o escaneamento separou da peça) são apagados junto. Para mantê-los, desmarque <em>Apagar pedaços soltos</em>.</p>
+<p>A <strong>confiança</strong> vai de 0 a 100 %. Alvos com menos de 50 % entram na lista desmarcados: confira no modelo e marque se forem alvos.</p>
+<h2>Como o furo é fechado</h2>
+<ol>
+<li>A superfície da peça em volta do pé é ajustada ao modelo mais simples que explica a vizinhança: <strong>plano</strong>, <strong>cilindro</strong>, <strong>esfera</strong>, <strong>cone</strong> ou <strong>superfície curva suave</strong> (para fundidos, chapas calandradas e raios grandes).</li>
+<li>O pé é recortado junto com o que estiver grudado nele acima dessa superfície (rebarba, caroço do escaneamento). O corpo do alvo, que fica solto, é apagado.</li>
+<li>O remendo é gerado sobre a superfície ajustada e emendado no contorno do furo.</li>
+</ol>
+<p>Casos especiais tratados:</p>
+<ul>
+<li><strong>Alvo na beirada</strong>, com o furo descendo por uma parede: a aresta viva entre a face de cima e a parede é refeita.</li>
+<li><strong>Alvo na borda da malha</strong>: a borda é refeita em linha reta naquele trecho.</li>
+<li><strong>Peça fina ou eixo</strong>: o lado oposto da peça nunca é tocado.</li>
+</ul>
+<p>Dois ajustes, no painel da esquerda:</p>
+<ul>
+<li><strong>Margem</strong> (padrão 1,2 mm): quanto o recorte entra na superfície limpa em volta do pé.</li>
+<li><strong>Alcance</strong> (padrão 8 mm): até onde, em volta do pé, o que estiver grudado nele é recortado quando a rebarba não termina sozinha (por exemplo, quando ela vai até uma parede).</li>
+</ul>
+<h2>O que conferir antes de confiar</h2>
+<ul>
+<li>O remendo é uma <strong>reconstrução</strong>. A superfície debaixo do alvo não foi escaneada. Em superfície lisa o erro fica na ordem do ruído da malha (nas peças de teste, média de 0,005 a 0,02 mm e máximo de 0,13 mm). Onde havia ressalto, cordão de solda ou rebarba passando por baixo do alvo, o remendo alisa.</li>
+<li>Situação <strong>conferir</strong>: o contorno do furo não assentou todo na referência, ou sobrou um toco de rebarba. Olhe esses remendos no modelo antes de medir em cima deles. O relatório lista cada um com o motivo.</li>
+<li>O <strong>ruído da referência</strong>, no detalhe de cada alvo e no relatório, é o espalhamento dos pontos da peça em volta do ajuste. É a precisão que se pode esperar daquele remendo.</li>
+</ul>
+<h2>Sólido para o SolidWorks</h2>
+<p>Na aba <strong>Sólido</strong>, o Cleanmold reconhece <strong>peça de revolução</strong> (eixo, bucha, flange, anel, tampa): acha o eixo, corta a malha por planos que passam por ele, tira o perfil em retas e arcos e arredonda as cotas como você escolher.</p>
+<p>O que sai:</p>
+<ul>
+<li><strong>STEP</strong> (<code>_solido.step</code>): um corpo só, abre como peça e não como montagem. Nenhum STEP leva árvore de projeto: abre como corpo importado.</li>
+<li><strong>Macro do SolidWorks</strong> (<code>_solidworks.swb</code>): é ela que dá a árvore editável. No SolidWorks, <em>Ferramentas &gt; Macro &gt; Executar</em> e escolha o arquivo. A macro cria uma peça nova com:
+  1. o esboço <strong>Perfil (Cleanmold)</strong> no Plano Frontal, com as retas e arcos, as relações (cilindros paralelos ao eixo, faces perpendiculares) e as cotas (diâmetros, posições das faces, cones, raios);
+  2. a <strong>Revolução (Cleanmold)</strong> em torno do eixo.</li>
+</ul>
+<p>Dois cliques na revolução ou no esboço mostram as cotas para editar.
+- <strong>Perfil em DXF</strong> (<code>_perfil.dxf</code>): o mesmo perfil, para quem preferir inserir num esboço e revolucionar à mão.</p>
+<p>Nos três, o eixo de revolução é o eixo X, com a origem na primeira face da peça.</p>
+<p>Limites:</p>
+<ul>
+<li>Só <strong>peça de revolução</strong>. Peça prismática ou de forma livre não tem árvore automática nesta versão.</li>
+<li>O que na peça <strong>não é de revolução</strong> (palhetas, nervuras, rasgos de chaveta, furos fora do eixo, dentes) fica de fora: modele por cima no SolidWorks. A tela informa quanto da malha o perfil explica.</li>
+<li>Malha de <strong>um lado só</strong> da peça, ou de <strong>um setor</strong> da volta, não fecha um corpo: sai a superfície de revolução, não um sólido.</li>
+<li>A macro foi escrita pela documentação da API do SolidWorks e <strong>ainda não foi executada num SolidWorks de verdade</strong>. Se alguma cota ou relação não entrar, ela avisa quais e a geometria fica certa; se a macro parar com erro, anote a linha e a mensagem.</li>
+</ul>
+<h2>Linha de comando</h2>
+<pre><code>python -m cleanmold malha.stl
+python -m cleanmold malha.stl --saida pasta --solido --margem 1,5
+</code></pre>
+<p>Grava <code>malha_limpa.stl</code>, o relatório em HTML e a planilha CSV. Com <code>--solido</code>, também STEP, DXF e macro. <code>--todos</code> retira também os alvos de confiança baixa; <code>--manter-soltos</code> não apaga os pedaços soltos.</p>
+<h2>Conferir a instalação</h2>
+<p><em>Menu Iniciar &gt; Cleanmold &gt; Validar a instalação</em> limpa três peças de teste de forma conhecida (chapa, eixo escalonado e calota aberta), com os alvos reais fundidos nelas, e confere contra o gabarito: alvos achados, furos fechados, erro do remendo, cotas do sólido. Termina com "Tudo certo".</p>
+<h2>Sem o instalador</h2>
+<p>O <code>Cleanmold_&lt;versão&gt;.zip</code> é o programa sem o Python. Extraia a pasta inteira para o disco do computador, coloque um Python 3.11 a 3.14 de 64 bits ao alcance (o WinPython extraído dentro da pasta serve) e rode <code>INSTALAR.bat</code>. Depois, <code>ABRIR_CLEANMOLD.bat</code> abre o programa e <code>CRIAR_ATALHO.bat</code> põe o ícone na Área de Trabalho.</p>
+<h2>Se algo der errado</h2>
+<ul>
+<li><strong>A janela não abre:</strong> o Cleanmold usa o Edge ou o Chrome como janela. Se nenhum abrir, uma caixa mostra o endereço para colar no navegador.</li>
+<li><strong>Faltou memória:</strong> malhas de vários milhões de triângulos pedem alguns gigabytes livres (cerca de 5 GB para 8 milhões de triângulos). Feche outros programas ou exporte a malha com menos triângulos.</li>
+<li><strong>Nenhum alvo encontrado:</strong> confira se a malha está em milímetros. Um pé de 18,8 mm numa malha em polegadas ou em metros não é reconhecido.</li>
+<li>Em <em>Análise &gt; Ver registro</em> fica o passo a passo da última análise.</li>
+</ul>
+</body></html>
