@@ -177,7 +177,7 @@ def cortar(m, ponto, normal):
     d = np.where(d == 0, 1e-9, d)
     D = d[m.F]
     cruza = (D.min(1) < 0) & (D.max(1) > 0)
-    F = m.F[cruza]
+    F = m.F[cruza].astype(np.int64)
     D = D[cruza]
     if not len(F):
         return []

@@ -65,7 +65,9 @@ def limpar_local(V, F, alvo, aro, opc):
     tocados. Devolve dict(V, F, novos=máscara dos triângulos do remendo, info)."""
     m = Malha(V, F)
     F = m.F
-    aro = np.asarray(aro)[:len(F)] if len(aro) == len(F) else None
+    aro = np.asarray(aro, bool)
+    if m.validos is not None:
+        aro = aro[m.validos]
     c, a, r = np.asarray(alvo["centro"], float), np.asarray(alvo["eixo"], float), float(alvo["raio"])
     alt_base = float(alvo.get("altura_base", 6.0))
     info = dict(referencia=None, sigma=None, preenchido=False, aviso=None, area_remendo=0.0, removidos=0, degrau=None)
@@ -197,6 +199,13 @@ def limpar_local(V, F, alvo, aro, opc):
     tocados = np.zeros(m.n_vertices, bool)
     tocados[F[regiao].ravel()] = True
     mk = Malha(Vn, Fk)
+    for _ in range(3):
+        orelha = orelhas(mk, tocados)
+        if not orelha.any():
+            break
+        tocados[mk.F[orelha].ravel()] = True
+        mk = Malha(Vn, mk.F[~orelha])
+        info["removidos"] += int(orelha.sum())
     Fk = mk.F
     novos = np.zeros(len(Fk), bool)
     bordas, _ = mk.bordas()
@@ -228,6 +237,14 @@ def limpar_local(V, F, alvo, aro, opc):
     info["degrau"] = float(max(est["degraus"])) if est["degraus"] else 0.0
     info["arestas_vivas"] = int(est["paredes"])
     return dict(V=Vn, F=Fn, novos=novos, info=info)
+
+
+def orelhas(mk, tocados):
+    """Triângulos presos ao resto por um lado só, com os outros dois no contorno do corte. Uma orelha dessas,
+    dobrada para dentro do furo, faz o remendo sair colado nela pelo avesso; sai antes de fechar."""
+    fe, _, cont = mk.arestas()
+    livres = (cont[fe] == 1).sum(axis=1)
+    return (livres >= 2) & (tocados[mk.F].sum(axis=1) >= 2)
 
 
 def _normal(modelo, c, a, eps=0.05):
@@ -291,6 +308,16 @@ def _trechos(marca):
     return out
 
 
+def _quase_simples(pol):
+    """O contorno não se cruza, a menos de dentes do recorte que um alisamento leve desfaz (o mesmo alisamento
+    que o fechamento do furo aplica antes de triangular)."""
+    for _ in range(3):
+        if remendo._simples(pol):
+            return True
+        pol = 0.5 * pol + 0.25 * (np.roll(pol, 1, axis=0) + np.roll(pol, -1, axis=0))
+    return remendo._simples(pol)
+
+
 def _fechar(est, laco, modelo, n_mod):
     V = est["V"]
     cl = V[laco].mean(0)
@@ -308,7 +335,7 @@ def _fechar(est, laco, modelo, n_mod):
     return True
 
 
-def _remendar(est, laco, tocados, modelo, n_ref, tol, arv_v, ids_v, nvk, res, r):
+def _remendar(est, laco, tocados, modelo, n_ref, tol, arv_v, ids_v, nvk, res, r, achar=None):
     """Fecha um laço de borda. Trata três situações: furo simples; furo que desce por uma parede ao lado
     (refaz a aresta viva entre a superfície de cima e a parede); recorte que encostou na borda da malha."""
     V = est["V"]
@@ -339,7 +366,7 @@ def _remendar(est, laco, tocados, modelo, n_ref, tol, arv_v, ids_v, nvk, res, r)
                         if np.linalg.norm(V[p] - V[q]) > 2 * (r + 26.0):
                             continue
                         Q = V[[p] + arco + [q]]
-                        if remendo._simples(np.c_[Q @ e1, Q @ e2]):
+                        if _quase_simples(np.c_[Q @ e1, Q @ e2]):
                             achou = (p, q, arco)
                             break
                     if achou:
@@ -356,7 +383,64 @@ def _remendar(est, laco, tocados, modelo, n_ref, tol, arv_v, ids_v, nvk, res, r)
             else:
                 est["avisos"].append("o recorte encostou na borda da malha; o trecho ficou aberto")
             return
-    # ---- paredes: trechos do contorno que saem da superfície de referência e assentam num plano próprio
+    est["paredes"] += _com_paredes(est, [int(x) for x in laco], modelo, n_ref, tol, arv_v, ids_v, nvk, len(tocados), achar=achar)
+
+
+def _parede_do_trecho(est, arco, modelo, sinal, tol, n_mod, arv_v, ids_v, nvk, n_orig):
+    """Plano da parede em que um trecho do contorno (fora da superfície `modelo`) está assentado, ou None.
+    Tenta primeiro com a vizinhança do trecho inteiro; se o trecho passa por mais de uma face (desce a parede e
+    segue pelo fundo, por exemplo), ajusta só pelas pontas, que são a parede que encosta na superfície."""
+    V = est["V"]
+
+    def vizinhos(pts):
+        viz = set()
+        for lst in arv_v.query_ball_point(V[pts], 4.5):
+            viz.update(lst)
+        viz = ids_v[np.fromiter(viz, dtype=np.int64)] if viz else np.zeros(0, np.int64)
+        viz = viz[viz < n_orig]
+        return viz[sinal * modelo.dist(V[viz]) > tol] if len(viz) else viz
+
+    def ajustar(viz):
+        if len(viz) < 25:
+            return None
+        pc, pn, sig, _ = ajuste.plano_robusto(V[viz])
+        nm = nvk[viz].mean(0)
+        if pn @ nm < 0:
+            pn = -pn
+        return pc, pn, sig
+
+    k = len(arco)
+    r = ajustar(vizinhos(arco))
+    if r is not None:
+        pc, pn, sig = r
+        parede = superficie.Plano(pc, pn)
+        dentro = np.mean(np.abs(parede.dist(V[arco])) < 0.5)
+        if sig <= 0.3 and dentro >= 0.75 and abs(pn @ n_mod) <= 0.9:
+            return parede, pn
+    # pelas pontas
+    q = max(3, min(k // 4, 12))
+    if k < 2 * q + 2:
+        return None
+    r = ajustar(vizinhos(arco[:q] + arco[-q:]))
+    if r is None:
+        return None
+    pc, pn, sig = r
+    parede = superficie.Plano(pc, pn)
+    d = np.abs(parede.dist(V[arco]))
+    pontas = np.mean(np.r_[d[:q], d[-q:]] < 0.5)
+    if sig > 0.3 or pontas < 0.8 or abs(pn @ n_mod) > 0.9:
+        return None
+    return parede, pn
+
+
+def _com_paredes(est, laco, modelo, n_mod, tol, arv_v, ids_v, nvk, n_orig, nivel=0, achar=None):
+    """Fecha um laço sobre `modelo`. Os trechos que saem dele e assentam numa parede plana são fechados à parte,
+    com a aresta viva entre as duas superfícies refeita; a parede é tratada do mesmo jeito (um furo que desce a
+    parede e continua pelo fundo tem duas arestas). Devolve o nº de paredes fechadas."""
+    V = est["V"]
+    n = len(laco)
+    lados = np.linalg.norm(V[laco] - V[np.roll(laco, -1)], axis=1)
+    passo = float(np.clip(np.median(lados), 0.2, 3.0))
     d0 = modelo.dist(V[laco])
     classe = np.where(np.abs(d0) <= tol, 0, np.where(d0 < 0, -1, 1))
     principal = list(laco)
@@ -367,23 +451,11 @@ def _remendar(est, laco, tocados, modelo, n_ref, tol, arv_v, ids_v, nvk, res, r)
         arco = [int(laco[(ini + j) % n]) for j in range(k)]
         p, q = int(laco[(ini - 1) % n]), int(laco[(ini + k) % n])
         sinal = np.sign(np.median(d0[[(ini + j) % n for j in range(k)]]))
-        # pontos da peça junto a esse trecho, do mesmo lado da referência
-        viz = set()
-        for lst in arv_v.query_ball_point(V[arco], 4.5):
-            viz.update(lst)
-        viz = ids_v[np.fromiter(viz, dtype=np.int64)] if viz else np.zeros(0, np.int64)
-        viz = viz[viz < len(res)]
-        viz = viz[sinal * res[viz] > tol]
-        if len(viz) < 25:
+        achado = (achar(arco, modelo, n_mod) if achar is not None else
+                  _parede_do_trecho(est, arco, modelo, sinal, tol, n_mod, arv_v, ids_v, nvk, n_orig))
+        if achado is None:
             continue
-        pc, pn, sig, _ = ajuste.plano_robusto(V[viz])
-        nm = nvk[viz].mean(0)
-        if pn @ nm < 0:
-            pn = -pn
-        parede = superficie.Plano(pc, pn)
-        dentro = np.mean(np.abs(parede.dist(V[arco])) < 0.5)
-        if sig > 0.3 or dentro < 0.75 or abs(pn @ n_ref) > 0.9:
-            continue
+        parede, pn = achado
         if p not in principal or q not in principal:
             continue
         corda = _corda(est, p, q, passo, [modelo, parede])     # de p para q, sobre a aresta
@@ -393,12 +465,18 @@ def _remendar(est, laco, tocados, modelo, n_ref, tol, arv_v, ids_v, nvk, res, r)
             principal = principal[:ip + 1] + corda + principal[iq:]
         else:
             principal = principal[iq:ip + 1] + corda
-        subs.append((np.array([p] + arco + [q] + corda[::-1]), parede, pn))
+        subs.append(([p] + arco + [q] + corda[::-1], parede, pn))
     if len(principal) >= 3:
-        _fechar(est, np.array(principal), modelo, n_ref)
+        _fechar(est, np.array(principal), modelo, n_mod)
+    feitas = 0
     for sub, parede, pn in subs:
-        if _fechar(est, sub, parede, pn):
-            est["paredes"] += 1
+        if nivel < 2:
+            nF = len(est["F"])
+            feitas += _com_paredes(est, sub, parede, pn, min(tol, 0.5), arv_v, ids_v, nvk, n_orig, nivel + 1, achar=achar)
+            feitas += int(len(est["F"]) > nF)
+        elif _fechar(est, np.array(sub), parede, pn):
+            feitas += 1
+    return feitas
 
 
 def limpar(m, det, escolhidos=None, opcoes=None, log=lambda s: None):
@@ -418,10 +496,9 @@ def limpar(m, det, escolhidos=None, opcoes=None, log=lambda s: None):
             viva[s["faces"]] = False
             n_soltos += 1
     eh_peca = det["eh_peca"]
-    if "arvore_faces" not in m._cache:
+    if "grade" not in m._cache:
         log("Indexando a malha…")
-        m._cache["arvore_faces"] = cKDTree(m.C)
-    arv = m._cache["arvore_faces"]
+    arv = m.grade()
     novos_V, novos_F = [], []
     n_v = len(V)
     relatorio = {}
@@ -436,7 +513,7 @@ def limpar(m, det, escolhidos=None, opcoes=None, log=lambda s: None):
         grupos = [np.flatnonzero(rot == k) for k in range(ng)]
     feitos = 0
     for grupo in grupos:
-        idx = np.unique(np.concatenate([arv.query_ball_point(centros[k], RAIO) for k in grupo]).astype(np.int64))
+        idx = arv.bolas(centros[grupo], RAIO)
         idx = idx[viva[idx] & eh_peca[idx]]
         if not len(idx):
             for k in grupo:
@@ -488,7 +565,7 @@ def limpar(m, det, escolhidos=None, opcoes=None, log=lambda s: None):
     usados[Ft.ravel()] = True
     renum = np.cumsum(usados) - 1
     limpa = Malha(Vt[usados], renum[Ft], nome=m.nome)
-    if len(limpa.F) != len(marca):                       # triângulo degenerado descartado na montagem
-        marca = marca[:len(limpa.F)]
+    if limpa.validos is not None:                        # triângulo degenerado descartado na montagem
+        marca = marca[limpa.validos]
     return dict(malha=limpa, remendo=marca, relatorio=[relatorio.get(i) for i in range(len(alvos))],
                 soltos_removidos=n_soltos, escolhidos=list(escolhidos))

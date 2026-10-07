@@ -201,6 +201,12 @@ def fechar(V, laco, modelo, c, n, e1, e2):
     Q = V[laco] - c
     pol = np.c_[Q @ e1, Q @ e2]
     idx = np.asarray(laco)
+    if _area2(pol) > 0:
+        # Quem manda no sentido do remendo é o contorno: os triângulos novos têm de percorrer cada lado ao
+        # contrário dos vizinhos. Se, visto da normal dada, o contorno aparece ao contrário do esperado, a normal
+        # é que está virada (acontece em remendos pequenos de parede): o remendo é feito visto do outro lado.
+        e1, n = -e1, -n
+        pol = np.c_[Q @ e1, Q @ e2]
     if _area2(pol) < 0:                                # visto de fora o furo é percorrido em sentido horário
         pol, idx = pol[::-1], idx[::-1]
     lados = np.linalg.norm(pol - np.roll(pol, -1, axis=0), axis=1)

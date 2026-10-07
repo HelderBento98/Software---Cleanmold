@@ -1,6 +1,6 @@
 # Cleanmold
 
-Retira os alvos de escaneamento de uma malha 3D (peão magnético, dado impresso, dado com base) e fecha os furos continuando a superfície da peça em volta. Para peça de revolução, também gera o sólido em STEP e uma macro que reconstrói a peça no SolidWorks com árvore de projeto. Da mesma família do Enmold.
+Retira os alvos de escaneamento de uma malha 3D (peão magnético, dado impresso, dado com base) e fecha os furos continuando a superfície da peça em volta. Otimiza a malha (menos triângulos, com o desvio medido) e repara: pincel de seleção, furos, alisamento e reparo automático. Para peça de revolução, também gera o sólido em STEP e uma macro que reconstrói a peça no SolidWorks com árvore de projeto. Da mesma família do Enmold.
 
 O manual de uso é o [LEIA-ME.md](LEIA-ME.md).
 
@@ -23,7 +23,7 @@ Sem marcar *Publicar*, o mesmo botão só monta e testa: o instalador fica nos *
 
 | Pasta / arquivo | Conteúdo |
 |---|---|
-| `cleanmold/` | o programa: `alvos.py` (procura dos alvos), `limpeza.py` e `remendo.py` (recorte e fechamento), `superficie.py` (referência do remendo), `solido.py` e `cad.py` (peça de revolução, STEP, DXF, macro), `servidor.py` e `web/` (interface) |
+| `cleanmold/` | o programa: `alvos.py` (procura dos alvos), `limpeza.py` e `remendo.py` (recorte e fechamento), `superficie.py` (referência do remendo), `otimizar.py` (redução de triângulos com desvio medido), `reparo.py` (pincel, furos, alisamento, exame e reparo), `solido.py` e `cad.py` (peça de revolução, STEP, DXF, macro), `app.py` (a sessão: malha de trabalho e desfazer), `servidor.py` e `web/` (interface) |
 | `cleanmold/alvos/` | biblioteca de tipos de alvo: pé, perfil de raios e nuvem de pontos de cada um |
 | `testes/` | peças de teste (`dados/*.npz`), a forma exata delas (`pecas.py`) e a validação (`validar.py`) |
 | `ferramentas/` | como a biblioteca de alvos e as peças de teste foram geradas (não vão no instalador) |
@@ -33,6 +33,6 @@ Sem marcar *Publicar*, o mesmo botão só monta e testa: o instalador fica nos *
 ## Cuidados
 
 - **Malhas de peças não entram neste repositório.** O `.gitignore` barra STL, PLY, OBJ e OFF; só as peças de teste sintéticas ficam aqui.
-- As versões das bibliotecas são fixas e iguais às do Enmold (`requirements.txt` e `instalador/bibliotecas_windows.txt`). Trocar uma versão só vale depois que a validação passar.
+- As versões das bibliotecas são fixas (`requirements.txt` e `instalador/bibliotecas_windows.txt`): as do Enmold, mais o `pyfqmr` (redução de malha). Trocar uma versão só vale depois que a validação passar.
 - A macro do SolidWorks ainda não foi executada num SolidWorks de verdade (veja o LEIA-ME).
 - Os remendos são reconstruções: medidas tomadas em cima deles devem ser confirmadas na peça.

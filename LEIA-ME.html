@@ -9,7 +9,7 @@ th{background:#1a1f25;color:#fff;font-weight:600} a{color:#0d6b43} li{margin:3px
 @media print{body{margin:0;max-width:none;font-size:11pt} h2{break-after:avoid}}
 </style></head><body>
 <h1>Cleanmold</h1>
-<p>Retira os alvos de escaneamento de uma malha 3D e fecha os furos continuando a superfície da peça que está em volta. Da mesma família do Enmold.</p>
+<p>Retira os alvos de escaneamento de uma malha 3D e fecha os furos continuando a superfície da peça que está em volta. Também otimiza a malha (menos triângulos, mesma forma) e repara: pincel de seleção, furos, alisamento e reparo automático. Da mesma família do Enmold.</p>
 <p>Tudo roda no computador: a malha, a análise e os arquivos não são enviados pela internet.</p>
 <h2>Instalar</h2>
 <p>Execute o <code>Cleanmold_Setup_&lt;versão&gt;.exe</code>. Instala só para o seu usuário, sem senha de administrador e sem internet, e ocupa cerca de 1,2 GB. O instalador não tem assinatura digital: no aviso do Windows, clique em <em>Mais informações &gt; Executar assim mesmo</em>.</p>
@@ -17,15 +17,73 @@ th{background:#1a1f25;color:#fff;font-weight:600} a{color:#0d6b43} li{margin:3px
 <h2>Usar</h2>
 <ol>
 <li><strong>Exporte a malha</strong> do Control X ou do Design X em STL (também PLY, OBJ ou OFF), em milímetros, com os alvos como saíram do escaneamento. Não precisa alinhar nem separar nada.</li>
-<li><strong>Abrir malha.</strong> A procura dos alvos começa sozinha. Numa malha de 8 milhões de triângulos leva cerca de um minuto.</li>
+<li><strong>Abrir malha.</strong> A procura dos alvos começa sozinha. Em malha de milhões de triângulos, o Cleanmold pergunta antes se é para <strong>otimizar ao abrir</strong> (veja <em>Malha grande</em>, abaixo).</li>
 <li><strong>Confira a lista.</strong> Cada alvo aparece em verde no modelo e numa linha da lista, com a confiança. Clique numa linha para ver o alvo de perto.
    - Não é alvo: desmarque a linha. Fica em laranja e não é tocado.
    - Faltou um alvo: use a ferramenta com a mira, na barra de cima, informe o diâmetro do recorte e clique no <strong>pé</strong> do alvo.</li>
 <li><strong>Retirar e fechar os furos.</strong> Depois, use <strong>Antes</strong> e <strong>Depois</strong> para comparar. Os remendos aparecem em verde-claro.</li>
+<li><strong>Repare o que faltar</strong>, na aba <strong>Malha e reparo</strong>: pincel, furos, exame e reparo automático.</li>
 <li><strong>Gerar arquivos:</strong> malha limpa (STL), relatório (PDF) e, para peça de revolução, sólido (STEP) e macro do SolidWorks.</li>
 </ol>
 <h3>No modelo 3D</h3>
-<p>Arraste para girar, role para aproximar, botão direito para mover. Os botões de vista (Isométrica, Cima, Frente, Lado) usam os eixos da própria malha.</p>
+<p>Arraste para girar, role para aproximar (a aproximação vai para onde está o cursor), botão direito para mover. Os botões de vista (Isométrica, Cima, Frente, Lado) usam os eixos da própria malha. Enquanto a vista se mexe, o modelo é mostrado com menos triângulos; parou, volta o modelo completo.</p>
+<p>Com o <strong>pincel</strong> aberto os botões mudam: o esquerdo pinta, o direito gira e o do meio desloca.</p>
+<h2>Malha grande</h2>
+<p>Uma malha de escaneamento de vários milhões de triângulos pede gigabytes de memória. Quando o arquivo passa de 4 milhões de triângulos, o Cleanmold mostra, antes de abrir, quanto ele vai pedir e quanto o computador tem livre, e oferece duas saídas:</p>
+<ul>
+<li><strong>Otimizar ao abrir</strong> (recomendado): a malha é lida e reduzida antes de qualquer outra coisa. A procura dos alvos e todas as ferramentas ficam várias vezes mais rápidas.</li>
+<li><strong>Abrir inteira</strong>: todos os triângulos. Dá para otimizar depois.</li>
+</ul>
+<p>Na malha de 8 milhões de triângulos usada no desenvolvimento (400 MB de STL): otimizando ao abrir com tolerância de 0,05 mm, ficaram 1,7 milhão de triângulos, com desvio máximo medido de 0,04 mm; abrir e achar os alvos levou cerca de um minuto, com pico de 1,6 GB de memória. Aberta inteira, o pico é de 2,6 GB.</p>
+<h3>Otimizar: menos triângulos, mesma forma</h3>
+<p>Onde a peça é plana ou pouco curva, muitos triângulos pequenos viram poucos grandes. Onde há raio, canto ou ressalto, os triângulos ficam. O critério é uma <strong>tolerância</strong> em mm: uma aresta só é desfeita se a malha nova continuar a menos dessa distância da original.</p>
+<table>
+<thead>
+<tr>
+<th>Nível</th>
+<th>Tolerância</th>
+<th>Para quê</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Fiel</td>
+<td>0,02 mm</td>
+<td>medir em cima da malha</td>
+</tr>
+<tr>
+<td>Equilibrado</td>
+<td>0,05 mm</td>
+<td>o uso normal</td>
+</tr>
+<tr>
+<td>Leve</td>
+<td>0,10 mm</td>
+<td>arquivo pequeno, visualização</td>
+</tr>
+</tbody>
+</table>
+<p>Depois de reduzir, o <strong>desvio é medido</strong>: distância de 200 mil pontos da malha original à malha nova, e da nova à original. O resultado (médio, 99 % e máximo) aparece no painel e vai para o relatório. A borda aberta da malha e o contorno dos furos não são mexidos.</p>
+<p>O arquivo STL diminui na mesma proporção dos triângulos. Em PLY a mesma malha ocupa menos da metade do STL.</p>
+<p>O que a otimização não faz: não tira ruído (uma superfície com ruído maior que a tolerância fica com os triângulos que tinha) e não fecha furos.</p>
+<h2>Pincel, furos e reparo</h2>
+<p>As ferramentas ficam na aba <strong>Malha e reparo</strong>, à direita, e no menu <strong>Malha</strong>. Elas mexem na malha de trabalho: a malha como foi aberta, enquanto os alvos não foram retirados; a malha limpa, depois. <strong>Desfazer</strong> (Ctrl+Z) volta a última operação, até seis para trás.</p>
+<h3>Pincel de seleção</h3>
+<p>Botão do pincel na barra de cima. Escolha o <strong>diâmetro</strong> (campo, régua, teclas <code>[</code> e <code>]</code>, ou Ctrl + roda do mouse) e arraste sobre a malha. O pincel é uma bola: pega o que está dentro dela e ligado ao ponto tocado, então o outro lado de uma parede fina fica de fora. <strong>Shift</strong> (ou o modo <em>Despintar</em>) tira a pintura.</p>
+<p>Com a região pintada:</p>
+<ul>
+<li><strong>Retirar e preencher</strong>: apaga o que está pintado, e o que ficar pendurado no corte, e fecha o furo seguindo a superfície em volta. É o jeito de tirar um alvo que a procura não achou: um toque no pé dele, com o pincel um pouco maior que o pé, e o corpo do alvo sai junto.</li>
+<li><strong>Preencher o vazio</strong>: para fechar um furo ou um entalhe na borda da malha, pinte por cima da beirada dele.</li>
+<li><strong>Alisar</strong>: <em>leve</em> tira o ruído; <em>médio</em> tira ondulações; <em>refazer liso</em> refaz a região como continuação lisa do que está em volta (serve para um caroço ou um resto de rebarba). O contorno da região não se mexe.</li>
+<li><strong>Apagar</strong>: só apaga, deixando o furo aberto.</li>
+</ul>
+<p>Use o menor pincel que cobre o que precisa sair. Um corte grande, que atravessa uma parede fina ou pega várias faces ao mesmo tempo, pode não ter uma superfície que o explique: nesse caso o Cleanmold avisa e deixa o corte aberto, em vez de inventar um remendo.</p>
+<h3>Furos</h3>
+<p><strong>Procurar furos</strong> lista os contornos abertos da malha e os mostra em vermelho no modelo. Dá para fechar um por um (botão <em>Fechar</em> da linha) ou <strong>todos até um diâmetro</strong>. O contorno maior de um escaneamento de um lado só é a borda da peça, não um furo: aparece marcado como <em>borda da peça</em> e só é fechado se você pedir.</p>
+<p>O fechamento usa o mesmo método dos alvos: a vizinhança do furo é separada em superfícies (plano, cilindro, esfera, cone, superfície suave), o remendo segue cada uma, e a aresta viva entre elas é refeita, inclusive quando o furo desce por uma parede e continua pelo fundo.</p>
+<p>Quando nenhuma dessas formas explica a vizinhança (a ponta de uma palheta que o escaneamento não pegou, um vazio entre as duas faces de uma parede fina, um canto de três faces), entra o <strong>preenchimento geral</strong>: o contorno é triangulado pela menor área, o remendo é refinado até os triângulos ficarem do tamanho dos vizinhos e depois assentado como a superfície de menor dobra que continua, com tangência, o que está em volta. O resultado é liso e fechado, mas é a forma mais simples possível, não a forma que a peça tinha: esses remendos saem marcados para conferir. Na malha usada no desenvolvimento, os 17 vazios do escaneamento (nas pontas e nos pés das palhetas, de 28 a 149 mm) foram fechados assim, em 13 segundos.</p>
+<h3>Exame e reparo automático</h3>
+<p><strong>Examinar a malha</strong> conta: pedaços soltos pequenos, arestas com três ou mais triângulos (lascas), triângulos virados em relação aos vizinhos, contornos abertos e triângulos muito finos. <strong>Reparar</strong> corrige o que estiver marcado.</p>
 <h2>O que o Cleanmold entende por alvo</h2>
 <p>Um alvo não é procurado pela malha exata dele, e sim pelo padrão:</p>
 <ul>
@@ -109,14 +167,16 @@ th{background:#1a1f25;color:#fff;font-weight:600} a{color:#0d6b43} li{margin:3px
 python -m cleanmold malha.stl --saida pasta --solido --margem 1,5
 </code></pre>
 <p>Grava <code>malha_limpa.stl</code>, o relatório em HTML e a planilha CSV. Com <code>--solido</code>, também STEP, DXF e macro. <code>--todos</code> retira também os alvos de confiança baixa; <code>--manter-soltos</code> não apaga os pedaços soltos.</p>
+<p><code>--otimizar</code> reduz a malha ao abrir (tolerância de 0,05 mm; <code>--otimizar 0,02</code> para outra). <code>--reparar</code> apaga lascas e pedaços soltos e desvira triângulos depois da limpeza; <code>--furos 5</code> fecha também os furos de até 5 mm.</p>
 <h2>Conferir a instalação</h2>
-<p><em>Menu Iniciar &gt; Cleanmold &gt; Validar a instalação</em> limpa três peças de teste de forma conhecida (chapa, eixo escalonado e calota aberta), com os alvos reais fundidos nelas, e confere contra o gabarito: alvos achados, furos fechados, erro do remendo, cotas do sólido. Termina com "Tudo certo".</p>
+<p><em>Menu Iniciar &gt; Cleanmold &gt; Validar a instalação</em> limpa três peças de teste de forma conhecida (chapa, eixo escalonado e calota aberta), com os alvos reais fundidos nelas, e confere contra o gabarito: alvos achados, furos fechados, erro do remendo, cotas do sólido. Depois repete com a malha otimizada (desvio medido dentro da tolerância) e confere o pincel, os furos, o alisamento, o reparo automático e o desfazer. Termina com "Tudo certo".</p>
 <h2>Sem o instalador</h2>
 <p>O <code>Cleanmold_&lt;versão&gt;.zip</code> é o programa sem o Python. Extraia a pasta inteira para o disco do computador, coloque um Python 3.11 a 3.14 de 64 bits ao alcance (o WinPython extraído dentro da pasta serve) e rode <code>INSTALAR.bat</code>. Depois, <code>ABRIR_CLEANMOLD.bat</code> abre o programa e <code>CRIAR_ATALHO.bat</code> põe o ícone na Área de Trabalho.</p>
 <h2>Se algo der errado</h2>
 <ul>
 <li><strong>A janela não abre:</strong> o Cleanmold usa o Edge ou o Chrome como janela. Se nenhum abrir, uma caixa mostra o endereço para colar no navegador.</li>
-<li><strong>Faltou memória:</strong> malhas de vários milhões de triângulos pedem alguns gigabytes livres (cerca de 5 GB para 8 milhões de triângulos). Feche outros programas ou exporte a malha com menos triângulos.</li>
+<li><strong>Faltou memória ou o computador ficou lento:</strong> abra de novo escolhendo <strong>Otimizar ao abrir</strong>. Aberta inteira, uma malha pede cerca de 340 MB de memória por milhão de triângulos; otimizando ao abrir, cerca de 130 MB por milhão.</li>
+<li><strong>O giro da vista está pesado:</strong> otimize a malha. A tela mostra até 1,2 milhão de triângulos parada e 150 mil em movimento; numa placa de vídeo integrada, a malha otimizada gira bem mais solta.</li>
 <li><strong>Nenhum alvo encontrado:</strong> confira se a malha está em milímetros. Um pé de 18,8 mm numa malha em polegadas ou em metros não é reconhecido.</li>
 <li>Em <em>Análise &gt; Ver registro</em> fica o passo a passo da última análise.</li>
 </ul>

@@ -56,6 +56,9 @@ def gerar_html(resumo, destino, ident=None):
     n_ok = sum(1 for l in ls if l["cls"] == "ok")
     n_av = sum(1 for l in ls if l["cls"] in ("av", "no"))
     e = html.escape
+    mil = lambda n: f"{int(n):,}".replace(",", ".")
+    final = resumo.get("triangulos_atual") or resumo.get("triangulos_limpa") or resumo["triangulos"]
+    aberta = (resumo.get("original") or {}).get("triangulos") or resumo["triangulos"]
     corpo = [f"<div class='marca'>CLEANMOLD</div><h1>Relatório de limpeza da malha</h1>",
              f"<div class='sub'>{e(resumo['arquivo'])} · {time.strftime('%d/%m/%Y %H:%M')}"
              + (f" · peça {e(ident['peca'])}" if ident.get("peca") else "")
@@ -66,8 +69,9 @@ def gerar_html(resumo, destino, ident=None):
              f"<div class='cx'>A conferir<b>{n_av}</b></div>",
              f"<div class='cx'>Pedaços soltos apagados<b>{resumo.get('soltos_removidos', 0)}</b></div>",
              "</div>",
-             f"<div class='sub'>Malha original: {resumo['triangulos']:,} triângulos · malha limpa: {(resumo.get('triangulos_limpa') or 0):,} triângulos · "
-             f"margem {_br(resumo['opcoes']['margem'], 1)} mm · alcance {_br(resumo['opcoes']['alcance'], 1)} mm</div>".replace(",", ".").replace(". ", ", ", 0),
+             f"<div class='sub'>Malha como foi aberta: {mil(aberta)} triângulos · malha gravada: {mil(final)} triângulos · "
+             f"margem {_br(resumo['opcoes']['margem'], 1)} mm · alcance {_br(resumo['opcoes']['alcance'], 1)} mm"
+             + ("" if resumo.get("limpo") else " · <b>os alvos não foram retirados</b>") + "</div>",
              "<h2>Alvos</h2><table><tr><th>Nº</th><th>Tipo</th><th>Confiança</th><th>Posição do pé (X; Y; Z) mm</th>"
              "<th>Referência do remendo</th><th>Ruído da ref. (mm)</th><th>Área (mm²)</th><th>Situação</th><th>Observação</th></tr>"]
     for l in ls:
@@ -76,6 +80,13 @@ def gerar_html(resumo, destino, ident=None):
                      f"<td class='n'>{_br(l['sigma'], 3)}</td><td class='n'>{_br(l['area'], 0)}</td>"
                      f"<td><span class='chip {l['cls']}'>{e(l['sit'])}</span></td><td>{e(l['obs'])}</td></tr>")
     corpo.append("</table>")
+    if resumo.get("edicoes"):
+        corpo.append("<h2>Otimização e reparos</h2><table><tr><th>Nº</th><th>O que foi feito</th><th>A conferir</th></tr>")
+        for k, ed in enumerate(resumo["edicoes"], 1):
+            corpo.append(f"<tr><td class='n'>{k}</td><td>{e(ed['texto'])}</td><td>{e('; '.join(ed.get('avisos') or []))}</td></tr>")
+        corpo.append("</table>")
+        corpo.append("<p class='nota'>A otimização junta triângulos onde a peça é lisa; o desvio informado foi medido entre a malha original "
+                     "e a otimizada. Regiões retiradas, furos fechados e regiões alisadas à mão são reconstruções, como os remendos dos alvos.</p>")
     corpo.append("<p class='nota'><b>Como ler.</b> A referência é a superfície ajustada à peça em volta do pé do alvo; o remendo é gerado "
                  "sobre ela e emendado no contorno do furo. O ruído é o espalhamento dos pontos da peça em torno dessa referência: é a "
                  "precisão que se pode esperar do remendo. “Conferir” marca os casos em que o contorno do furo não assentou todo na "

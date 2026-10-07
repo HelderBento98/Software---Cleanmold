@@ -10,12 +10,13 @@ from . import app, cad, malha, pdf, relatorio, solido
 
 NOMES = dict(stl="_limpa.stl", ply="_limpa.ply", pdf="_limpeza.pdf", html="_limpeza.html", csv="_limpeza.csv",
              step="_solido.step", macro="_solidworks.swb", dxf="_perfil.dxf")
+NOMES_SEM_LIMPEZA = dict(stl="_cleanmold.stl", ply="_cleanmold.ply")      # malha só otimizada ou reparada, ainda com os alvos
 
 
 def reconhecer(s, d=None, log=lambda t: None):
     """Reconhece a peça de revolução na malha limpa (ou na original, se ainda não foi limpa)."""
     d = d or {}
-    m = s.limpa["malha"] if s.limpa else s.m
+    m = s.atual()
     passo = float(d.get("arredondar") or 0.01)
     if passo not in (0.001, 0.01, 0.05, 0.1, 0.5, 1.0):
         raise ValueError("Arredondamento inválido.")
@@ -80,18 +81,18 @@ def salvar(s, pasta, base, itens, ident=None, log=lambda t: None):
     """Grava os arquivos pedidos. Devolve {item: caminho, ..., 'falhas': {item: motivo}}."""
     out, falhas = {}, {}
     os.makedirs(pasta, exist_ok=True)
-    ml = s.limpa["malha"]
+    ml = s.atual()
     resumo = s.resumo()
 
     def cam(k):
-        return os.path.join(pasta, base + NOMES[k])
+        return os.path.join(pasta, base + (NOMES_SEM_LIMPEZA.get(k, NOMES[k]) if s.limpa is None else NOMES[k]))
     for k in itens:
         try:
             if k == "stl":
-                log("Gravando a malha limpa (STL)…")
-                out[k] = malha.gravar_stl(ml, cam(k))
+                log("Gravando a malha (STL)…")
+                out[k] = malha.gravar_stl(ml, cam(k), "Cleanmold - malha limpa (mm)" if s.limpa is not None else "Cleanmold - malha (mm)")
             elif k == "ply":
-                log("Gravando a malha limpa (PLY)…")
+                log("Gravando a malha (PLY)…")
                 out[k] = malha.gravar_ply(ml, cam(k))
             elif k == "html":
                 out[k] = relatorio.gerar_html(resumo, cam(k), ident)

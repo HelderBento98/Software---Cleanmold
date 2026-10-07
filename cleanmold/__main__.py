@@ -31,6 +31,10 @@ def main(argv=None):
     ap.add_argument("--margem", type=_dec, default=None, help="mm retirados a mais em volta do recorte (padrão 1,2)")
     ap.add_argument("--alcance", type=_dec, default=None, help="mm em volta do pé onde rebarbas grudadas são recortadas (padrão 8)")
     ap.add_argument("--manter-soltos", action="store_true", help="não apagar os pedaços soltos")
+    ap.add_argument("--otimizar", type=_dec, nargs="?", const=0.05, default=None, metavar="MM",
+                    help="reduzir os triângulos ao abrir, com esta tolerância em mm (padrão 0,05): mais rápido e usa menos memória")
+    ap.add_argument("--reparar", action="store_true", help="depois de retirar os alvos, apagar lascas e pedaços soltos e desvirar triângulos")
+    ap.add_argument("--furos", type=_dec, default=None, metavar="MM", help="fechar também os furos de diâmetro até MM")
     ap.add_argument("--todos", action="store_true", help="retirar também os alvos de confiança baixa")
     ap.add_argument("--solido", action="store_true", help="reconhecer peça de revolução e gravar STEP, DXF e macro do SolidWorks")
     ap.add_argument("--ply", action="store_true", help="gravar também a malha limpa em PLY")
@@ -63,7 +67,25 @@ def _linha_de_comando(a):
         raise ValueError(f"a malha: arquivo não encontrado: {a.malha}")
     if a.saida and os.path.exists(a.saida) and not os.path.isdir(a.saida):
         raise ValueError(f"--saida: {a.saida} é um arquivo, não uma pasta.")
-    s = app.Sessao(a.malha, log=print)
+    if a.otimizar is not None and not (0.001 <= a.otimizar <= 1.0):
+        raise ValueError("--otimizar: a tolerância precisa ficar entre 0,001 e 1 mm.")
+    if a.furos is not None and not (0.1 <= a.furos <= 2000.0):
+        raise ValueError("--furos: o diâmetro precisa ficar entre 0,1 e 2000 mm.")
+    av = app.avaliar_arquivo(a.malha)
+    if av["apertado"] and a.otimizar is None:
+        print(f"AVISO: esta malha pede cerca de {av['precisa'] / 2**30:.1f} GB de memória e há {av['livre'] / 2**30:.1f} GB livres. "
+              "Se o computador travar, rode de novo com --otimizar.")
+    ult = [""]
+
+    def log(t):                                  # o andamento em % não enche a tela
+        chave = t.split("…")[0]
+        if "%" in t and chave == ult[0] and not t.endswith("100%"):
+            return
+        ult[0] = chave
+        print(t)
+    s = app.Sessao(a.malha, log=log, otimizar_tol=a.otimizar)
+    if s.otimizacao:
+        print(app._texto_otimizacao(s.otimizacao))
     s.analisar()
     alvos_ = s.det["alvos"]
     for i, al in enumerate(alvos_):
@@ -78,6 +100,9 @@ def _linha_de_comando(a):
     for x in r["alvos"]:
         if x["retirado"] and (x["aviso"] or not x["preenchido"] or (x["degrau"] or 0) > 0.8):
             print(f"  CONFERIR alvo {x['i'] + 1}: {x['aviso'] or ''}" + (f" contorno até {x['degrau']:.1f} mm fora da referência" if (x["degrau"] or 0) > 0.8 else ""))
+    if a.reparar or a.furos is not None:
+        i = s.reparar(furos_ate=a.furos)
+        print("Reparo: " + ("nada a corrigir" if i.get("nada") else s.edicoes[-1]["texto"].replace("Reparo automático: ", "")))
     itens = ["stl", "html", "csv"] + (["ply"] if a.ply else [])
     if a.solido:
         saidas.reconhecer(s, None, log=print)

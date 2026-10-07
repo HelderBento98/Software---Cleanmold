@@ -6,7 +6,7 @@ from urllib.parse import urlparse, parse_qs, unquote
 
 import numpy as np
 
-from . import __version__, app, malha, pdf, saidas
+from . import __version__, app, malha, otimizar, pdf, saidas
 
 WEB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 TIPOS = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -29,7 +29,11 @@ class Estado:
         self.ocupado = None
         self.erro = None
         self.versao = 0                         # muda a cada alteração do resultado
-        self.bin = {}                           # fase -> (versão, bytes) da malha para a tela
+        self.bin = {}                           # fase -> dict(versao, cheia, mapa, leve, mapa_leve) da malha para a tela
+        self.furos = None                       # (fase, versão, bytes) dos contornos abertos para a tela
+        self.ultima = None                      # resultado da última edição: dict(n, tipo, texto, avisos)
+        self.n_ultima = 0
+        self.avaliacao = None                   # o que a malha escolhida vai pedir do computador
         self.janelas = {}
         self.export = None
         self.pasta_saida = None
@@ -128,8 +132,25 @@ def resultado():
     s = E.sessao
     r = s.resumo()
     r.update(versao=E.versao, ident=E.ident, analisado_em=E.analisado_em,
-             pasta=E.pasta_saida or os.path.dirname(s.caminho), solido=saidas.resumo_solido(s))
+             pasta=E.pasta_saida or os.path.dirname(s.caminho), solido=saidas.resumo_solido(s), ultima=E.ultima,
+             furos_prontos=bool(E.furos and E.furos[0] == s.fase_de_edicao() and E.furos[1] == s.versao[E.furos[0]]),
+             niveis=dict(otimizar.NIVEIS))
     return _limpo(r)
+
+
+def _mil(n):
+    return f"{int(n):,}".replace(",", ".")
+
+
+def _dec(v, d=2):
+    return f"{float(v):.{d}f}".replace(".", ",")
+
+
+def _feito(tipo, texto, avisos=None, **mais):
+    """Registra o resultado de uma edição para a janela mostrar."""
+    E.n_ultima += 1
+    E.ultima = dict(n=E.n_ultima, tipo=tipo, texto=texto, avisos=list(avisos or []), **mais)
+    E.registrar(texto)
 
 
 # ---------------------------------------------------------------------------
@@ -159,53 +180,94 @@ def _tarefa(nome, fn):
     threading.Thread(target=rodar, daemon=True).start()
 
 
-def _tela(fase):
-    """Malha reduzida para a tela, de antes ou de depois da limpeza (guardada até o resultado mudar)."""
+LEVE = 150_000                                  # triângulos da malha leve, mostrada enquanto a vista gira
+
+
+def _tela(fase, nivel="cheia"):
+    """Malha reduzida para a tela, de antes ou de depois da limpeza (guardada até a malha da fase mudar).
+    nivel "leve": versão com poucos triângulos, que a janela mostra enquanto a vista está em movimento."""
     s = E.sessao
+    if fase == "depois" and s.limpa is None:
+        raise ErroUsuario("A malha ainda não foi limpa.")
     g = E.bin.get(fase)
-    if g and g[0] == E.versao:
-        return g[1]
-    focos, raio = s.focos()
-    if fase == "antes":
-        b = app.malha_para_tela(s.m, s.marcas_antes(), focos, raio)
-    else:
-        if s.limpa is None:
-            raise ErroUsuario("A malha ainda não foi limpa.")
-        b = app.malha_para_tela(s.limpa["malha"], s.limpa["remendo"].astype(np.uint16), focos, raio)
-    E.bin[fase] = (E.versao, b)
-    return b
+    if not g or g["versao"] != s.versao[fase]:
+        focos, raio = s.focos()
+        m = s.malha_de(fase)
+        marca = s.marcas(fase)
+        cheia, mapa = app.malha_para_tela(m, marca, focos, raio)
+        leve, mapa_leve = (None, None)
+        if m.n_faces > 2 * LEVE:
+            leve, mapa_leve = app.malha_para_tela(m, marca, None, 0.0, alvo=LEVE, fino_marcado=False)
+        g = dict(versao=s.versao[fase], cheia=cheia, mapa=mapa, leve=leve, mapa_leve=mapa_leve)
+        E.bin[fase] = g
+    return g[nivel]
 
 
-def analisar():
+def _selecao_bin():
+    """Seleção do pincel para a tela: vértices da malha cheia (I) e da leve (J) que estão selecionados."""
+    s = E.sessao
+    info = s.info_selecao()
+    fase = info["fase"] if info else s.fase_de_edicao()
+    _tela(fase)
+    g = E.bin[fase]
+    mapas = [("I", g["mapa"])] + ([("J", g["mapa_leve"])] if g["mapa_leve"] is not None else [])
+    mascara = s.selecao["mascara"] if s.selecao else None
+    blocos = app.selecao_para_tela(s.malha_de(fase), mascara, mapas)
+    return app._empacotar(dict(blocos={}, selecao=_limpo(info), fase=fase), blocos)
+
+
+def _preparar_telas():
+    s = E.sessao
+    E.registrar("Preparando a vista 3D")
+    _tela("antes")
+    if s.limpa is not None:
+        _tela("depois")
+
+
+def analisar(otimizar_tol=None):
     caminho = E.arquivo
     if not caminho or not os.path.isfile(caminho):
         raise ErroUsuario("Abra uma malha primeiro.")
+    if otimizar_tol is not None and not (0.001 <= otimizar_tol <= 1.0):
+        raise ErroUsuario("A tolerância da otimização precisa ficar entre 0,001 e 1 mm.")
 
     def fn():
         E.log.clear()
         E.falha = None
         try:
-            s = app.Sessao(caminho, log=E.registrar)
-            s.analisar()
-            E.registrar("Preparando a vista 3D")
-            antes = app.malha_para_tela(s.m, s.marcas_antes(), *s.focos())
+            mesma = E.sessao is not None and E.sessao.caminho == caminho and otimizar_tol is None and E.sessao.det is not None
+            if mesma:
+                # procurar de novo na malha como está agora (otimizada ou reparada), sem reler o arquivo
+                s = E.sessao
+                s._guardar("a nova procura dos alvos")
+                s.analisar()
+            else:
+                grande = (E.avaliacao or {}).get("estimado") or 0
+                if E.sessao is not None and max(E.sessao.m.n_faces, grande) > 1_500_000:
+                    E.sessao = None                           # malha grande: solta a anterior antes de abrir a nova
+                    E.bin = {}
+                s = app.Sessao(caminho, log=E.registrar, otimizar_tol=otimizar_tol)
+                s.analisar()
+            E.sessao = s
+            E.furos = None
+            _preparar_telas()
         except MemoryError:
-            E.falha = dict(arquivo=os.path.basename(caminho), erro="Faltou memória para esta malha. Feche outros programas ou "
-                           "exporte a malha com menos triângulos.")
+            E.falha = dict(arquivo=os.path.basename(caminho), erro="Faltou memória para esta malha. Feche outros programas e abra de novo "
+                           "com a opção de otimizar na abertura.")
             raise ErroUsuario(E.falha["erro"])
         except Exception as e:
             E.falha = dict(arquivo=os.path.basename(caminho), erro=str(e) or type(e).__name__)
             raise
         with E.trava:
-            nova = E.sessao is None or E.sessao.caminho != caminho
-            E.sessao = s
             E.versao += 1
-            E.bin = {"antes": (E.versao, antes)}
             E.analisado_em = time.strftime("%d/%m/%Y %H:%M")
             if E.pasta_nova:
                 E.pasta_saida = E.pasta_nova
-            if nova:
+            if not mesma:
                 E.ident = dict(peca="", responsavel=E.ident.get("responsavel", ""))
+                E.ultima = None
+                if s.otimizacao:
+                    _feito("otimizar", app._texto_otimizacao(s.otimizacao))
             E.export = None
         E.registrar("Análise concluída.")
     _tarefa("analisando a malha", fn)
@@ -234,14 +296,185 @@ def limpar(d):
     def fn():
         E.registrar("Retirando os alvos…")
         s.limpar(escolha, opcoes)
-        E.registrar("Preparando a vista 3D")
         with E.trava:
             E.versao += 1
-            E.bin.pop("depois", None)
             E.export = None
-        _tela("antes"), _tela("depois")
+            E.furos = None
+        _preparar_telas()
         E.registrar("Limpeza concluída.")
     _tarefa("retirando os alvos", fn)
+
+
+def _fase_pedida(d):
+    f = d.get("fase")
+    if f not in (None, "antes", "depois"):
+        raise ErroUsuario("Pedido inválido.")
+    return f
+
+
+def _sessao():
+    if E.sessao is None:
+        raise ErroUsuario("Abra uma malha primeiro.")
+    return E.sessao
+
+
+def _depois_de_editar():
+    with E.trava:
+        E.versao += 1
+        E.export = None
+        E.furos = None
+    _preparar_telas()
+
+
+def otimizar_malha(d):
+    s = _sessao()
+    fase = _fase_pedida(d)
+    tol = _numero(d.get("tolerancia"), "Tolerância")
+    if tol is None or not (0.001 <= tol <= 1.0):
+        raise ErroUsuario("A tolerância precisa ficar entre 0,001 e 1 mm.")
+    if not otimizar.disponivel():
+        raise ErroUsuario("A biblioteca de redução de malha não está instalada. Rode de novo o instalador do Cleanmold.")
+    s._fase(fase)
+
+    def fn():
+        r = s.otimizar(tol, fase)
+        if r.get("sem_ganho"):
+            _feito("otimizar", "A malha já está enxuta para essa tolerância: nada foi alterado.")
+            return
+        _depois_de_editar()
+        _feito("otimizar", app._texto_otimizacao(r))
+    _tarefa("otimizando a malha", fn)
+
+
+def editar(d):
+    s = _sessao()
+    fase = _fase_pedida(d)
+    acao = d.get("acao")
+    if acao not in ("retirar", "apagar", "alisar", "preencher"):
+        raise ErroUsuario("Pedido inválido.")
+    forca = d.get("forca", 2)
+    if forca not in (1, 2, 3):
+        raise ErroUsuario("Pedido inválido.")
+    s._selecionados(fase)
+
+    def fn():
+        if acao in ("retirar", "apagar"):
+            E.registrar("Retirando a região pintada…" if acao == "retirar" else "Apagando a região pintada…")
+            i = s.apagar_selecao(fase, preencher=acao == "retirar")
+            txt = f"{_mil(i['apagados'] + i['pendurados'])} triângulos retirados"
+            if i.get("pendurados"):
+                txt += " (com o que ficou pendurado no corte)"
+            if acao == "retirar":
+                if i["furos"]:
+                    txt += f"; {i['fechados']} de {i['furos']} furo(s) fechado(s)"
+                    if i["referencias"]:
+                        txt += " sobre " + ", ".join(sorted(set(i["referencias"])))
+                    if i.get("arestas_vivas"):
+                        txt += f", com {i['arestas_vivas']} aresta(s) viva(s) refeita(s)"
+                else:
+                    txt += "; o corte não deixou furo para fechar"
+            avisos = list(i["avisos"])
+            if (i.get("degrau") or 0) > 0.8:
+                avisos.append(f"o contorno do furo fica até {_dec(i['degrau'], 1)} mm fora da superfície de referência: confira o remendo")
+            _depois_de_editar()
+            _feito("editar", txt + ".", avisos)
+        elif acao == "alisar":
+            E.registrar("Alisando a região pintada…")
+            i = s.alisar_selecao(fase, forca)
+            _depois_de_editar()
+            _feito("editar", f"Região alisada: {_mil(i['vertices'])} vértices, deslocamento máximo {_dec(i['deslocamento_max'])} mm.")
+        else:
+            E.registrar("Preenchendo o vazio pintado…")
+            r = s.preencher_selecao(fase)
+            _depois_de_editar()
+            _feito("editar", f"{r['fechados']} contorno(s) fechado(s)" + (" sobre " + ", ".join(r["referencias"]) if r["referencias"] else "") + ".",
+                   r["avisos"] + ([f"{r['abertos']} contorno(s) não puderam ser fechados"] if r["abertos"] else []))
+    _tarefa("editando a malha", fn)
+
+
+def furos(d):
+    s = _sessao()
+    fase = s._fase(_fase_pedida(d))
+    acao = d.get("acao")
+    if acao == "listar":
+        def fn():
+            E.registrar("Procurando os furos da malha…")
+            lac = s.furos(fase)
+            E.furos = (fase, s.versao[fase], app.furos_para_tela(s.malha_de(fase), lac))
+            E.registrar(f"{len(lac)} contorno(s) aberto(s).")
+        _tarefa("procurando os furos", fn)
+        return
+    if acao != "fechar":
+        raise ErroUsuario("Pedido inválido.")
+    ids, ate = d.get("ids"), _numero(d.get("ate"), "Diâmetro")
+    if ids is not None and (not isinstance(ids, list) or not all(isinstance(i, int) and not isinstance(i, bool) for i in ids) or not ids):
+        raise ErroUsuario("Pedido inválido.")
+    if ids is None and (ate is None or not (0.1 <= ate <= 2000.0)):
+        raise ErroUsuario("Informe até que diâmetro os furos devem ser fechados (0,1 a 2000 mm).")
+
+    def fn():
+        E.registrar("Fechando furos…")
+        r = s.preencher_furos(fase, ids=ids, ate=ate)
+        _depois_de_editar()
+        lac = s.furos(fase)
+        E.furos = (fase, s.versao[fase], app.furos_para_tela(s.malha_de(fase), lac))
+        _feito("furos", f"{r['fechados']} furo(s) fechado(s)" + (" sobre " + ", ".join(r["referencias"]) if r["referencias"] else "") + ".",
+               r["avisos"] + ([f"{r['abertos']} furo(s) não puderam ser fechados"] if r["abertos"] else []))
+    _tarefa("fechando furos", fn)
+
+
+def reparo(d):
+    s = _sessao()
+    fase = s._fase(_fase_pedida(d))
+    acao = d.get("acao")
+    if acao == "diagnostico":
+        def fn():
+            s.diagnosticar(fase)
+            lac = s.furos(fase)
+            E.furos = (fase, s.versao[fase], app.furos_para_tela(s.malha_de(fase), lac))
+            with E.trava:
+                E.versao += 1
+            E.registrar("Exame concluído.")
+        _tarefa("examinando a malha", fn)
+        return
+    if acao != "reparar":
+        raise ErroUsuario("Pedido inválido.")
+    ate = _numero(d.get("furos_ate"), "Diâmetro dos furos")
+    if ate is not None and not (0.1 <= ate <= 2000.0):
+        raise ErroUsuario("Diâmetro dos furos: informe um valor entre 0,1 e 2000 mm.")
+    op = dict(soltos=bool(d.get("soltos", True)), nao_variedade=bool(d.get("nao_variedade", True)), orientar=bool(d.get("orientar", True)),
+              furos_ate=ate if d.get("furos") else None)
+    if not (op["soltos"] or op["nao_variedade"] or op["orientar"] or op["furos_ate"]):
+        raise ErroUsuario("Marque pelo menos um item para reparar.")
+
+    def fn():
+        E.registrar("Reparando a malha…")
+        i = s.reparar(fase, **op)
+        if i.get("nada"):
+            with E.trava:
+                E.versao += 1
+            _feito("reparo", "Nada a corrigir nos itens marcados.")
+            return
+        _depois_de_editar()
+        s.diagnosticar(fase)
+        lac = s.furos(fase)
+        E.furos = (fase, s.versao[fase], app.furos_para_tela(s.malha_de(fase), lac))
+        with E.trava:
+            E.versao += 1
+        _feito("reparo", s.edicoes[-1]["texto"] + ".", [f"{i['furos_abertos']} furo(s) pequeno(s) não puderam ser fechados"] if i.get("furos_abertos") else [])
+    _tarefa("reparando a malha", fn)
+
+
+def desfazer():
+    s = _sessao()
+    if not s.pode_desfazer():
+        raise ErroUsuario("Não há nada para desfazer.")
+
+    def fn():
+        oque = s.desfazer()
+        _depois_de_editar()
+        _feito("desfazer", f"Desfeito: {oque}.")
+    _tarefa("desfazendo", fn)
 
 
 def exportar(itens, pasta, ident):
@@ -253,7 +486,7 @@ def exportar(itens, pasta, ident):
     itens = [k for k in itens if isinstance(k, str) and k in app.ITENS]
     if not itens:
         raise ErroUsuario("Marque pelo menos um arquivo para gerar.")
-    if s.limpa is None:
+    if s.limpa is None and not s.edicoes:
         raise ErroUsuario("Retire os alvos antes de gerar os arquivos.")
     if not isinstance(pasta, str):
         raise ErroUsuario("Pedido inválido.")
@@ -418,7 +651,7 @@ class Pedido(BaseHTTPRequestHandler):
                 self._json(dict(versao_app=__version__, ocupado=E.ocupado, erro=E.erro, n_log=len(E.log), log=E.log[desde:],
                                 versao=E.versao, tem_resultado=E.sessao is not None, falha=E.falha,
                                 limpo=bool(E.sessao and E.sessao.limpa is not None),
-                                arquivo=E.arquivo, nome=os.path.basename(E.arquivo) if E.arquivo else None,
+                                arquivo=E.arquivo, nome=os.path.basename(E.arquivo) if E.arquivo else None, avaliacao=E.avaliacao,
                                 analisado=os.path.basename(E.sessao.caminho) if E.sessao else None,
                                 export=E.export, pdf_disponivel=pdf.navegador() is not None))
         elif p == "/api/resultado":
@@ -430,13 +663,27 @@ class Pedido(BaseHTTPRequestHandler):
             if E.sessao is None:
                 return self._erro("sem malha", 404)
             fase = (q.get("fase") or ["antes"])[0]
-            if fase not in ("antes", "depois"):
+            nivel = (q.get("nivel") or ["cheia"])[0]
+            if fase not in ("antes", "depois") or nivel not in ("cheia", "leve"):
                 return self._erro("fase desconhecida", 404)
             if fase == "depois" and E.sessao.limpa is None:
                 return self._erro("a malha ainda não foi limpa", 404)
             with E.trava:
-                b = _tela(fase)
+                b = _tela(fase, nivel)
+            if b is None:
+                return self._erro("sem malha leve", 404)
             self._enviar(b, "application/octet-stream")
+        elif p == "/api/selecao.bin":
+            if E.sessao is None:
+                return self._erro("sem malha", 404)
+            with E.trava:
+                b = _selecao_bin()
+            self._enviar(b, "application/octet-stream")
+        elif p == "/api/furos.bin":
+            s_ = E.sessao
+            if s_ is None or not E.furos or E.furos[0] != s_.fase_de_edicao() or E.furos[1] != s_.versao[E.furos[0]]:
+                return self._erro("sem lista de furos", 404)
+            self._enviar(E.furos[2], "application/octet-stream")
         elif p == "/api/solido.bin":
             if E.sessao is None:
                 return self._erro("sem malha", 404)
@@ -508,7 +755,8 @@ class Pedido(BaseHTTPRequestHandler):
                     fh.write(b); resto -= len(b)
             E.arquivo = destino
             E.pasta_nova = E.pasta_saida or os.path.join(os.path.expanduser("~"), "Documents", "Cleanmold")
-            return self._json(dict(caminho=destino, nome=nome, tamanho=n))
+            E.avaliacao = _limpo(app.avaliar_arquivo(destino))
+            return self._json(dict(caminho=destino, nome=nome, tamanho=n, avaliacao=E.avaliacao))
         d = self._corpo_json()
         if p == "/api/abrir":
             _parado()
@@ -521,9 +769,53 @@ class Pedido(BaseHTTPRequestHandler):
                 raise ErroUsuario("Arquivo não encontrado: " + cam)
             E.arquivo = cam
             E.pasta_nova = os.path.dirname(cam)
-            self._json(dict(caminho=cam, nome=os.path.basename(cam), tamanho=os.path.getsize(cam)))
+            E.avaliacao = _limpo(app.avaliar_arquivo(cam))
+            self._json(dict(caminho=cam, nome=os.path.basename(cam), tamanho=os.path.getsize(cam), avaliacao=E.avaliacao))
         elif p == "/api/analisar":
-            analisar()
+            analisar(_numero(d.get("otimizar"), "Tolerância"))
+            self._json(dict(ok=True))
+        elif p == "/api/otimizar":
+            _parado()
+            otimizar_malha(d)
+            self._json(dict(ok=True))
+        elif p == "/api/pincel":
+            _parado()
+            s_ = _sessao()
+            pin = d.get("pinceladas")
+            if not isinstance(pin, list) or not pin or len(pin) > 20000 or not all(
+                    isinstance(x, list) and len(x) == 5 and all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in x)
+                    for x in pin):
+                raise ErroUsuario("Pedido inválido.")
+            if any(not (0.05 <= x[3] <= 500.0) for x in pin):
+                raise ErroUsuario("O diâmetro do pincel precisa ficar entre 0,1 e 1000 mm.")
+            with E.trava:
+                s_.pintar(_fase_pedida(d), pin)
+                b = _selecao_bin()
+            self._enviar(b, "application/octet-stream")
+        elif p == "/api/selecao":
+            _parado()
+            s_ = _sessao()
+            if d.get("acao") not in ("limpar", "crescer", "encolher"):
+                raise ErroUsuario("Pedido inválido.")
+            with E.trava:
+                s_.mudar_selecao(d["acao"])
+                b = _selecao_bin()
+            self._enviar(b, "application/octet-stream")
+        elif p == "/api/editar":
+            _parado()
+            editar(d)
+            self._json(dict(ok=True))
+        elif p == "/api/furos":
+            _parado()
+            furos(d)
+            self._json(dict(ok=True))
+        elif p == "/api/reparo":
+            _parado()
+            reparo(d)
+            self._json(dict(ok=True))
+        elif p == "/api/desfazer":
+            _parado()
+            desfazer()
             self._json(dict(ok=True))
         elif p == "/api/limpar":
             limpar(d)
@@ -535,10 +827,11 @@ class Pedido(BaseHTTPRequestHandler):
             pt = d.get("ponto")
             if not (isinstance(pt, list) and len(pt) == 3 and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in pt)):
                 raise ErroUsuario("Pedido inválido.")
+            if E.sessao.limpa is not None:
+                E.sessao._guardar("a indicação de um alvo")
             with E.trava:
                 i = E.sessao.alvo_manual(pt, _numero(d.get("diametro"), "Diâmetro"))
                 E.versao += 1
-                E.bin = {}
                 E.export = None
                 r = resultado()
             r["novo"] = i
@@ -552,11 +845,13 @@ class Pedido(BaseHTTPRequestHandler):
             if not isinstance(i, int) or isinstance(i, bool) or not (0 <= i < len(alvos_)) or not alvos_[i].get("manual"):
                 raise ErroUsuario("Só dá para apagar da lista um alvo indicado à mão.")
             with E.trava:
-                alvos_.pop(i)
+                E.sessao._guardar("a retirada de um alvo da lista")
+                E.sessao.det = dict(E.sessao.det, alvos=[a for k, a in enumerate(alvos_) if k != i])
                 E.sessao.escolha = [k if k < i else k - 1 for k in E.sessao.escolha if k != i]
                 E.sessao.limpa = None
+                E.sessao.versao["antes"] += 1
+                E.sessao.versao["depois"] += 1
                 E.versao += 1
-                E.bin = {}
                 E.export = None
                 self._json(resultado())
         elif p == "/api/ident":

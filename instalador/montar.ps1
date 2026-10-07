@@ -50,6 +50,11 @@ Write-Host '== 2. bibliotecas'
 Conferir $LASTEXITCODE 'A instalação das bibliotecas'
 & $py -I -m pip check
 Conferir $LASTEXITCODE 'A conferência de dependências (pip check)'
+# O redutor de malha (pyfqmr) precisa da MSVCP140.dll, que só existe no Windows com o Visual C++ instalado.
+# Vai ao lado dele a cópia que já vem dentro do numpy, com o nome que ele procura.
+$dll = Get-ChildItem (Join-Path $sp 'numpy.libs') -Filter 'msvcp140*.dll' | Select-Object -First 1
+if (-not $dll) { throw 'numpy.libs não trouxe a msvcp140: o redutor de malha não abriria em PC sem o Visual C++' }
+Copy-Item $dll.FullName (Join-Path $sp 'pyfqmr\msvcp140.dll')
 
 # ---- 3. validação com o Python que vai dentro do instalador
 Write-Host '== 3. validação'
