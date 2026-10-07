@@ -28,14 +28,14 @@ Unicode true
   !define B "/"
 !endif
 !define CHAVE_DESINST "Software\Microsoft\Windows\CurrentVersion\Uninstall\Cleanmold"
-!define TESTE_BIBLIOTECAS "exec('import sys\ntry:\n import numpy, scipy, trimesh, matplotlib, ezdxf, cadquery, tkinter\nexcept BaseException as e:\n sys.stderr.write(type(e).__name__ + chr(58) + chr(32) + str(e)[-600:]); sys.exit(1)')"
+!define TESTE_BIBLIOTECAS "exec('import sys\ntry:\n import numpy, scipy, trimesh, tkinter\nexcept BaseException as e:\n sys.stderr.write(type(e).__name__ + chr(58) + chr(32) + str(e)[-600:]); sys.exit(1)')"
 
 Name "Cleanmold ${VERSAO}"
 OutFile "${SAIDA}"
 InstallDir "$LOCALAPPDATA\Programs\Cleanmold"
 InstallDirRegKey HKCU "Software\Cleanmold" "Pasta"
 RequestExecutionLevel user
-SetCompressor lzma                 ; por arquivo (não /SOLID): instala direto na pasta, sem temporário de 1,2 GB
+SetCompressor lzma                 ; por arquivo (não /SOLID): instala direto na pasta, sem temporário grande
 SetCompressorDictSize 64
 ManifestDPIAware true
 BrandingText "Cleanmold ${VERSAO}"
@@ -54,7 +54,7 @@ VIAddVersionKey /LANG=1046 "LegalCopyright" "Cleanmold"
 !define MUI_ABORTWARNING
 
 !define MUI_WELCOMEPAGE_TITLE "Instalar o Cleanmold ${VERSAO}"
-!define MUI_WELCOMEPAGE_TEXT "Retira os alvos de escaneamento da malha e fecha os furos pela superfície vizinha.$\r$\n$\r$\nA instalação é só para o seu usuário: não pede senha de administrador e não usa a internet. Ocupa cerca de 1,2 GB.$\r$\n$\r$\nSe o Cleanmold estiver aberto, feche-o antes de continuar."
+!define MUI_WELCOMEPAGE_TEXT "Retira os alvos de escaneamento da malha e deixa o furo no lugar de cada um.$\r$\n$\r$\nA instalação é só para o seu usuário: não pede senha de administrador e não usa a internet. Ocupa cerca de 1,2 GB.$\r$\n$\r$\nSe o Cleanmold estiver aberto, feche-o antes de continuar."
 !insertmacro MUI_PAGE_WELCOME
 
 !define MUI_PAGE_CUSTOMFUNCTION_LEAVE ConferirPasta
@@ -153,8 +153,8 @@ Function ConferirPasta
   ${EndIf}
   ${GetRoot} "$INSTDIR" $0
   ${DriveSpace} "$0\" "/D=F /S=M" $3
-  ${If} $3 < 1500
-    MessageBox MB_OK|MB_ICONEXCLAMATION "Falta espaço no disco $0 para instalar: é preciso ter 1500 MB livres (há $3 MB)."
+  ${If} $3 < 600
+    MessageBox MB_OK|MB_ICONEXCLAMATION "Falta espaço no disco $0 para instalar: é preciso ter 600 MB livres (há $3 MB)."
     Abort
   ${EndIf}
 FunctionEnd

@@ -1,8 +1,8 @@
 """Uso em linha de comando:
 
     python -m cleanmold                       abre a interface
-    python -m cleanmold malha.stl             limpa e grava malha_limpa.stl e o relatório ao lado da malha
-    python -m cleanmold malha.stl --saida pasta --solido --margem 1,5
+    python -m cleanmold malha.stl             retira os alvos e grava malha_limpa.stl ao lado da malha
+    python -m cleanmold malha.stl --saida pasta --margem 1,5 --ply
 """
 import argparse, os, sys
 
@@ -24,22 +24,15 @@ def _dec(texto):
 
 
 def main(argv=None):
-    ap = _Opcoes(prog="cleanmold", description="Retira os alvos de escaneamento de uma malha 3D e fecha os furos pela superfície vizinha")
+    ap = _Opcoes(prog="cleanmold", description="Retira os alvos de escaneamento de uma malha 3D, deixando o furo onde cada alvo estava")
     ap.add_argument("malha", nargs="?", help="arquivo STL / PLY / OBJ / OFF")
     ap.add_argument("--gui", action="store_true", help="abrir a interface (padrão quando não se informa a malha)")
     ap.add_argument("--saida", help="pasta de saída (padrão: pasta da malha)")
     ap.add_argument("--margem", type=_dec, default=None, help="mm retirados a mais em volta do recorte (padrão 1,2)")
     ap.add_argument("--alcance", type=_dec, default=None, help="mm em volta do pé onde rebarbas grudadas são recortadas (padrão 8)")
-    ap.add_argument("--manter-soltos", action="store_true", help="não apagar os pedaços soltos")
-    ap.add_argument("--otimizar", type=_dec, nargs="?", const=0.05, default=None, metavar="MM",
-                    help="reduzir os triângulos ao abrir, com esta tolerância em mm (padrão 0,05): mais rápido e usa menos memória")
-    ap.add_argument("--reparar", action="store_true", help="depois de retirar os alvos, apagar lascas e pedaços soltos e desvirar triângulos")
-    ap.add_argument("--furos", type=_dec, default=None, metavar="MM", help="fechar também os furos de diâmetro até MM")
+    ap.add_argument("--manter-soltos", action="store_true", help="não apagar os pedaços soltos que não são de nenhum alvo")
     ap.add_argument("--todos", action="store_true", help="retirar também os alvos de confiança baixa")
-    ap.add_argument("--solido", action="store_true", help="reconhecer peça de revolução e gravar STEP, DXF e macro do SolidWorks")
-    ap.add_argument("--ply", action="store_true", help="gravar também a malha limpa em PLY")
-    ap.add_argument("--peca", help="identificação da peça / nº do desenho")
-    ap.add_argument("--responsavel", help="responsável")
+    ap.add_argument("--ply", action="store_true", help="gravar a malha limpa também em PLY (arquivo menor, mesma malha)")
     a = ap.parse_args(argv)
     if a.gui or not a.malha:
         from .servidor import main as servidor_main
@@ -56,25 +49,24 @@ def main(argv=None):
         from .app import erro_de_arquivo
         print(f"ERRO: {erro_de_arquivo(e)}" + (f": {e.filename}" if getattr(e, "filename", None) else ""), file=sys.stderr)
         sys.exit(2)
+    except MemoryError:
+        print("ERRO: faltou memória para esta malha. Feche outros programas e rode de novo.", file=sys.stderr)
+        sys.exit(2)
     except (RuntimeError, ValueError) as e:
         print("ERRO: " + str(e), file=sys.stderr)
         sys.exit(2)
 
 
 def _linha_de_comando(a):
-    from . import app, saidas
+    from . import app
     if not os.path.isfile(a.malha):
         raise ValueError(f"a malha: arquivo não encontrado: {a.malha}")
     if a.saida and os.path.exists(a.saida) and not os.path.isdir(a.saida):
         raise ValueError(f"--saida: {a.saida} é um arquivo, não uma pasta.")
-    if a.otimizar is not None and not (0.001 <= a.otimizar <= 1.0):
-        raise ValueError("--otimizar: a tolerância precisa ficar entre 0,001 e 1 mm.")
-    if a.furos is not None and not (0.1 <= a.furos <= 2000.0):
-        raise ValueError("--furos: o diâmetro precisa ficar entre 0,1 e 2000 mm.")
     av = app.avaliar_arquivo(a.malha)
-    if av["apertado"] and a.otimizar is None:
+    if av["apertado"]:
         print(f"AVISO: esta malha pede cerca de {av['precisa'] / 2**30:.1f} GB de memória e há {av['livre'] / 2**30:.1f} GB livres. "
-              "Se o computador travar, rode de novo com --otimizar.")
+              "Feche outros programas se o computador ficar lento.")
     ult = [""]
 
     def log(t):                                  # o andamento em % não enche a tela
@@ -83,9 +75,7 @@ def _linha_de_comando(a):
             return
         ult[0] = chave
         print(t)
-    s = app.Sessao(a.malha, log=log, otimizar_tol=a.otimizar)
-    if s.otimizacao:
-        print(app._texto_otimizacao(s.otimizacao))
+    s = app.Sessao(a.malha, log=log)
     s.analisar()
     alvos_ = s.det["alvos"]
     for i, al in enumerate(alvos_):
@@ -94,32 +84,26 @@ def _linha_de_comando(a):
     escolha = list(range(len(alvos_))) if a.todos else None
     s.limpar(escolha, dict(margem=a.margem, alcance=a.alcance, remover_soltos=not a.manter_soltos))
     r = s.resumo()
-    n_ok = sum(1 for x in r["alvos"] if x["retirado"] and x["preenchido"] and not x["aviso"] and (x["degrau"] or 0) <= 0.8)
     n_ret = sum(1 for x in r["alvos"] if x["retirado"])
-    print(f"{n_ret} alvos retirados; {n_ok} fechados sem ressalva; {r['soltos_removidos']} pedaços soltos apagados")
+    print(f"{n_ret} alvos retirados; {r['soltos_removidos']} pedaços soltos apagados; "
+          f"{r['triangulos'] - r['triangulos_limpa']:,} triângulos a menos".replace(",", "."))
     for x in r["alvos"]:
-        if x["retirado"] and (x["aviso"] or not x["preenchido"] or (x["degrau"] or 0) > 0.8):
-            print(f"  CONFERIR alvo {x['i'] + 1}: {x['aviso'] or ''}" + (f" contorno até {x['degrau']:.1f} mm fora da referência" if (x["degrau"] or 0) > 0.8 else ""))
-    if a.reparar or a.furos is not None:
-        i = s.reparar(furos_ate=a.furos)
-        print("Reparo: " + ("nada a corrigir" if i.get("nada") else s.edicoes[-1]["texto"].replace("Reparo automático: ", "")))
-    itens = ["stl", "html", "csv"] + (["ply"] if a.ply else [])
-    if a.solido:
-        saidas.reconhecer(s, None, log=print)
-        if s.solido is None:
-            print("AVISO: " + (s.solido_erro or "a peça não foi reconhecida como de revolução"))
-        else:
-            itens += ["step", "macro"]
+        if x["tentado"] and (x["aviso"] or not x["retirado"]):
+            print(f"  CONFERIR alvo {x['i'] + 1}: {x['aviso'] or 'não foi retirado'}")
+        elif x["retirado"] and x["nota"]:
+            print(f"  alvo {x['i'] + 1}: {x['nota']}")
     pasta = a.saida or os.path.dirname(os.path.abspath(a.malha))
     os.makedirs(pasta, exist_ok=True)
     base = os.path.splitext(os.path.basename(a.malha))[0]
-    out = saidas.salvar(s, pasta, base, itens, ident=dict(peca=a.peca, responsavel=a.responsavel), log=lambda t: None)
+    out = s.salvar(pasta, base, ["stl"] + (["ply"] if a.ply else []), log=log)
     falhas = out.pop("falhas", {})
     print("\nArquivos:")
     for k, v in out.items():
         print(f"  {k}: {v}")
     for k, v in falhas.items():
         print(f"  {k}: NAO GERADO - {v}")
+    if falhas:
+        sys.exit(2)
 
 
 def _aviso_de_partida(msg):

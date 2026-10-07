@@ -357,19 +357,22 @@ def passo_de_amostra(m, maximo=5_000_000):
 def separar_pedacos(m, fracao=0.05):
     """Triângulos da peça (pedaços grandes) e pedaços soltos pequenos. Devolve (é_peça por triângulo, lista de soltos).
     Cada solto: dict(faces=índices, centro, raio, area)."""
-    rot, n = m.componentes()
-    area = np.bincount(rot, weights=m.A, minlength=n)
+    rot = m.pedacos()[m.F[:, 0]]                            # pedaço de cada triângulo (rótulo = um vértice dele)
+    area = np.bincount(rot, weights=m.A, minlength=m.n_vertices)
     grande = area >= fracao * area.max()
     eh_peca = grande[rot]
     soltos = []
-    if n > 1:
-        ordem = np.argsort(rot, kind="stable")
-        lim = np.searchsorted(rot[ordem], np.arange(n + 1))
-        for k in np.flatnonzero(~grande):
-            f = ordem[lim[k]:lim[k + 1]]
-            C = m.C[f]
+    f = np.flatnonzero(~eh_peca)
+    if len(f):
+        r = rot[f]
+        ordem = np.argsort(r, kind="stable")
+        f, r = f[ordem], r[ordem]
+        lim = np.r_[0, np.flatnonzero(r[1:] != r[:-1]) + 1, len(r)]
+        for a, b in zip(lim[:-1], lim[1:]):
+            fk = f[a:b]
+            C = m.centros(fk)
             c = C.mean(0)
-            soltos.append(dict(faces=f, centro=c, raio=float(np.linalg.norm(C - c, axis=1).max()), area=float(area[k])))
+            soltos.append(dict(faces=fk, centro=c, raio=float(np.linalg.norm(C - c, axis=1).max()), area=float(area[r[a]])))
     return eh_peca, soltos
 
 
@@ -446,7 +449,7 @@ def detectar(m, log=lambda s: None, tipos=None, nota_minima=0.5):
     # ---- segundo caminho: o pé saiu amassado (um caroço em vez de um cilindro), mas a esfera ou o dodecaedro
     # do alvo estão lá. Parte-se deles, acha-se a superfície da peça logo abaixo e o caroço em cima dela.
     log("Conferindo esferas e dodecaedros sem pé…")
-    arv_p = cKDTree(Pp)
+    arv_p = None
     rng = np.random.default_rng(1)
     pistas = []
     for rr in sorted({round(e[1], 1) for t in tipos for e in t.esferas}):
@@ -473,6 +476,8 @@ def detectar(m, log=lambda s: None, tipos=None, nota_minima=0.5):
     for e, h, t, origem in pistas:
         if explicado(e):
             continue
+        if arv_p is None:
+            arv_p = cKDTree(Pp)
         pe = sondar(arv_p, Pp, Np, e, h, t, rng)
         if pe is None:
             continue

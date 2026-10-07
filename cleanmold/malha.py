@@ -1,6 +1,11 @@
 """Malha de triângulos: leitura, gravação, vizinhança, bordas e amostragem.
 
-Tudo em milímetros. A malha é um par (V, F): vértices N×3 e triângulos M×3 (índices de V)."""
+Tudo em milímetros. A malha é um par (V, F): vértices N×3 e triângulos M×3 (índices de V).
+
+A malha escaneada inteira ocupa pouco: vértices em 32 bits (como no arquivo STL), triângulos em 32 bits e a área
+de cada triângulo. Normais e centros são calculados na hora, só para os triângulos pedidos (`normais`, `centros`).
+As tabelas de arestas e de vizinhos (`arestas`, `grafo_faces`…) existem para os recortes pequenos em volta de cada
+alvo; a malha inteira nunca passa por elas."""
 import os
 import numpy as np
 from scipy import sparse
@@ -12,32 +17,30 @@ _BLOCO = 1_000_000
 
 class Malha:
     def __init__(self, V, F, nome=""):
-        self.V = np.ascontiguousarray(V, dtype=np.float64)
+        V = np.asarray(V)
+        self.V = np.ascontiguousarray(V, dtype=np.float32 if V.dtype == np.float32 else np.float64)
         F = np.asarray(F).reshape(-1, 3)
         if len(self.V) >= 2**31 - 1:
             raise ValueError("Malha grande demais (mais de 2 bilhões de vértices).")
         F = np.ascontiguousarray(F, dtype=np.int32)
         m = len(F)
-        A = np.empty(m, np.float64)
-        N = np.empty((m, 3), np.float32)
-        C = np.empty((m, 3), np.float32)
+        A = np.empty(m, self.V.dtype)
         ok = np.empty(m, bool)
+        soma = np.zeros(3)
         # em blocos: a malha inteira de uma vez pediria vários vetores temporários do tamanho dela
         for i in range(0, m, _BLOCO):
             f = F[i:i + _BLOCO]
-            a, b, c = self.V[f[:, 0]], self.V[f[:, 1]], self.V[f[:, 2]]
-            cr = np.cross(b - a, c - a)
+            a = self.V[f[:, 0]].astype(np.float64)
+            cr = np.cross(self.V[f[:, 1]] - a, self.V[f[:, 2]] - a)
+            soma += cr.sum(axis=0)
             a2 = np.linalg.norm(cr, axis=1)
             ok[i:i + _BLOCO] = (a2 > 1e-14) & (f[:, 0] != f[:, 1]) & (f[:, 1] != f[:, 2]) & (f[:, 0] != f[:, 2])
             A[i:i + _BLOCO] = a2 / 2
-            N[i:i + _BLOCO] = cr / np.maximum(a2, 1e-300)[:, None]
-            C[i:i + _BLOCO] = (a + b + c) / 3.0
         if not ok.all():
-            F, A, N, C = F[ok], A[ok], N[ok], C[ok]
+            F, A = F[ok], A[ok]
         self.F = np.ascontiguousarray(F)
         self.A = A                           # área de cada triângulo
-        self.N = N                           # normal de cada triângulo
-        self.C = C                           # centro de cada triângulo
+        self.area_vetor = soma / 2           # soma das normais × área: zero numa malha fechada
         self.validos = None if ok.all() else ok   # triângulos de F (como veio) que ficaram; None = todos
         self.nome = nome
         self._cache = {}
@@ -53,20 +56,50 @@ class Malha:
 
     @property
     def area(self):
-        return float(self.A.sum())
+        if "area" not in self._cache:
+            self._cache["area"] = float(self.A.sum(dtype=np.float64))
+        return self._cache["area"]
+
+    def frente(self):
+        """De que lado a malha foi escaneada: a direção média das normais, ou None se a malha dá a volta na peça
+        (numa superfície fechada as normais se anulam; num escaneamento de um lado só, sobra uma direção)."""
+        k = float(np.linalg.norm(self.area_vetor))
+        return self.area_vetor / k if k > 0.2 * max(self.area, 1e-12) else None
 
     def caixa(self):
-        return self.V.min(0), self.V.max(0)
+        if "caixa" not in self._cache:
+            self._cache["caixa"] = (self.V.min(0).astype(np.float64), self.V.max(0).astype(np.float64))
+        return self._cache["caixa"]
 
-    def volume(self):
-        """Volume com sinal (positivo quando as normais apontam para fora de uma malha fechada)."""
-        v = 0.0
-        for i in range(0, self.n_faces, _BLOCO):
-            f = self.F[i:i + _BLOCO]
-            v += float(np.einsum("ij,ij->i", self.V[f[:, 0]], np.cross(self.V[f[:, 1]], self.V[f[:, 2]])).sum())
-        return v / 6.0
+    # ---- por triângulo, só para os pedidos (idx: índices ou None = todos)
+    def cantos(self, idx=None):
+        """Os três vértices de cada triângulo pedido: K×3×3, em 64 bits."""
+        f = self.F if idx is None else self.F[idx]
+        return self.V[f].astype(np.float64)
 
-    # ---- arestas
+    def centros(self, idx=None):
+        return self.cantos(idx).mean(axis=1)
+
+    def normais(self, idx=None):
+        T = self.cantos(idx)
+        cr = np.cross(T[:, 1] - T[:, 0], T[:, 2] - T[:, 0])
+        return cr / np.maximum(np.linalg.norm(cr, axis=1), 1e-300)[:, None]
+
+    @property
+    def N(self):
+        """Normal de todos os triângulos (para os recortes pequenos; a malha inteira usa `normais(idx)`)."""
+        if "N" not in self._cache:
+            self._cache["N"] = self.normais()
+        return self._cache["N"]
+
+    @property
+    def C(self):
+        """Centro de todos os triângulos (para os recortes pequenos; a malha inteira usa `centros(idx)`)."""
+        if "C" not in self._cache:
+            self._cache["C"] = self.centros()
+        return self._cache["C"]
+
+    # ---- arestas (recortes pequenos)
     def arestas(self):
         """(meia_aresta -> id da aresta, pares de vértices por aresta, nº de triângulos por aresta)."""
         if "arestas" not in self._cache:
@@ -116,16 +149,6 @@ class Malha:
             self._cache["gf"] = g + g.T
         return self._cache["gf"]
 
-    def grafo_vertices(self, com_comprimento=False):
-        ch = "gv" + ("L" if com_comprimento else "")
-        if ch not in self._cache:
-            _, e, _ = self.arestas()
-            n = self.n_vertices
-            w = np.linalg.norm(self.V[e[:, 0]] - self.V[e[:, 1]], axis=1) if com_comprimento else np.ones(len(e), np.float32)
-            g = sparse.coo_matrix((w, (e[:, 0], e[:, 1])), shape=(n, n)).tocsr()
-            self._cache[ch] = g + g.T
-        return self._cache[ch]
-
     def componentes(self):
         """Rótulo do pedaço ligado de cada triângulo (ligação por aresta) e o nº de pedaços."""
         if "comp" not in self._cache:
@@ -133,149 +156,186 @@ class Malha:
             self._cache["comp"] = (rot, n)
         return self._cache["comp"]
 
+    # ---- pedaços da malha inteira, sem tabela de arestas
+    def pedacos(self, bloco=4_000_000):
+        """Rótulo do pedaço de cada VÉRTICE (ligação por triângulo). O rótulo é o menor índice de vértice do pedaço.
+
+        Feito aos poucos: cada bloco de triângulos junta os pedaços que ele liga. A memória pedida é a de um bloco
+        mais umas poucas listas do tamanho dos vértices, não a de uma tabela de arestas da malha inteira."""
+        if "pedacos" not in self._cache:
+            nv = self.n_vertices
+            L = np.arange(nv, dtype=np.int32)
+            for i in range(0, self.n_faces, bloco):
+                f = L[self.F[i:i + bloco]]                       # os triângulos do bloco, já com os rótulos de agora
+                g = sparse.coo_matrix((np.ones(2 * len(f), np.int8), (np.r_[f[:, 0], f[:, 1]], np.r_[f[:, 1], f[:, 2]])),
+                                      shape=(nv, nv)).tocsr()
+                del f
+                n, rot = csgraph.connected_components(g, directed=False)
+                del g
+                raiz = np.empty(n, np.int32)
+                raiz[rot[::-1]] = np.arange(nv - 1, -1, -1, dtype=np.int32)     # fica o menor índice de cada grupo
+                troca = raiz[rot]
+                del raiz, rot
+                for j in range(0, nv, 4 * _BLOCO):
+                    L[j:j + 4 * _BLOCO] = troca[L[j:j + 4 * _BLOCO]]
+                del troca
+            self._cache["pedacos"] = L
+        return self._cache["pedacos"]
+
+    # ---- normais de vértice e amostragem
     def normais_de_vertice(self, suavizar=0):
+        """Normal de cada vértice (soma das normais dos triângulos em volta, pesada pela área), alisada `suavizar`
+        vezes com os vizinhos. Calculada por acumulação direta, sem montar o grafo dos vértices."""
         ch = ("nv", suavizar)
         if ch not in self._cache:
-            n = np.zeros_like(self.V)
-            pond = self.N * self.A[:, None]
-            for k in range(3):
-                np.add.at(n, self.F[:, k], pond)
-            if suavizar:
-                g = self.grafo_vertices()
-                for _ in range(suavizar):
-                    n = n + g @ n
+            nv, nf, F = self.n_vertices, self.n_faces, self.F
+            # Somar por vértice custa (triângulos do bloco + vértices da malha): poucos blocos grandes. O bloco
+            # acompanha o tamanho da malha, e com ele a memória de passagem (uns 7 bytes por triângulo da malha).
+            bloco = max(_BLOCO, nf // 4 + 1)
+            n = np.zeros((nv, 3), np.float64)
+            grau = np.zeros(nv, np.int32)                        # nº de triângulos em cada vértice
+            for i in range(0, nf, bloco):
+                fb = F[i:i + bloco]
+                cr = np.empty((len(fb), 3), np.float32)          # normal × área
+                for j in range(0, len(fb), _BLOCO):
+                    f = fb[j:j + _BLOCO]
+                    a = self.V[f[:, 0]].astype(np.float64)
+                    cr[j:j + _BLOCO] = np.cross(self.V[f[:, 1]] - a, self.V[f[:, 2]] - a) * 0.5
+                for k in range(3):
+                    grau += np.bincount(fb[:, k], minlength=nv).astype(np.int32)
+                    for e in range(3):
+                        n[:, e] += np.bincount(fb[:, k], weights=cr[:, e], minlength=nv)
+                del cr
+            for _ in range(suavizar):
+                # n + (soma das normais dos vizinhos). Num triângulo, cada vértice recebe a soma dos outros dois, isto
+                # é, a soma dos três menos ele mesmo; e um lado comum a dois triângulos é visto duas vezes (peso 1/2).
+                for e in range(3):                               # um eixo de cada vez: as contas não se misturam
+                    col = np.ascontiguousarray(n[:, e])
+                    ac = np.zeros(nv, np.float64)
+                    for i in range(0, nf, bloco):
+                        fb = F[i:i + bloco]
+                        soma = col[fb[:, 0]]
+                        soma += col[fb[:, 1]]
+                        soma += col[fb[:, 2]]
+                        for k in range(3):
+                            ac += np.bincount(fb[:, k], weights=soma, minlength=nv)
+                        del soma
+                    ac -= grau * col
+                    ac *= 0.5
+                    n[:, e] += ac
+                    del ac, col
             c = np.linalg.norm(n, axis=1)
-            self._cache[ch] = n / np.maximum(c, 1e-30)[:, None]
+            n /= np.maximum(c, 1e-30)[:, None]
+            self._cache[ch] = n.astype(np.float32)
         return self._cache[ch]
 
     def aresta_mediana(self):
         """Comprimento típico dos lados dos triângulos (mediana numa amostra; não precisa da tabela de arestas)."""
         if "am" not in self._cache:
             n = self.n_faces
-            f = self.F if n <= 100_000 else self.F[np.random.default_rng(0).choice(n, 100_000, replace=False)]
-            a, b, c = self.V[f[:, 0]], self.V[f[:, 1]], self.V[f[:, 2]]
-            lados = np.concatenate([np.linalg.norm(b - a, axis=1), np.linalg.norm(c - b, axis=1), np.linalg.norm(a - c, axis=1)])
+            T = self.cantos(None if n <= 100_000 else np.sort(np.random.default_rng(0).choice(n, 100_000, replace=False)))
+            lados = np.concatenate([np.linalg.norm(T[:, 1] - T[:, 0], axis=1), np.linalg.norm(T[:, 2] - T[:, 1], axis=1),
+                                    np.linalg.norm(T[:, 0] - T[:, 2], axis=1)])
             self._cache["am"] = float(np.median(lados)) if len(lados) else 1.0
         return self._cache["am"]
-
-    # ---- índice espacial dos triângulos (pelo centro)
-    def grade(self):
-        if "grade" not in self._cache:
-            # uns 30 triângulos por célula ocupada
-            cel = float(np.clip(np.sqrt(30.0 * self.area / max(self.n_faces, 1)), 1.0, 30.0))
-            self._cache["grade"] = Grade(self.C, cel)
-        return self._cache["grade"]
-
-    # ---- operações que devolvem malha nova
-    @classmethod
-    def _montada(cls, V, F, A, N, C, nome=""):
-        m = cls.__new__(cls)
-        m.V, m.F, m.A, m.N, m.C = V, F, A, N, C
-        m.validos = None
-        m.nome = nome
-        m._cache = {}
-        return m
-
-    def editar(self, manter=None, V_novos=None, F_novos=None):
-        """Malha nova sem os triângulos desmarcados em `manter` e com os triângulos `F_novos` (que podem usar os
-        vértices antigos e, a partir do índice n_vertices, os `V_novos`). As tabelas dos triângulos que ficam são
-        aproveitadas. Devolve (malha, origem): para cada triângulo da malha nova, o índice do antigo; ou, se ele
-        veio de F_novos, -1 - k (k = linha de F_novos)."""
-        n_f = self.n_faces
-        fica = np.ones(n_f, bool) if manter is None else np.asarray(manter, bool)
-        V = self.V if V_novos is None or not len(V_novos) else np.vstack([self.V, np.asarray(V_novos, np.float64)])
-        Fk = self.F[fica]
-        partes_A, partes_N, partes_C = [self.A[fica]], [self.N[fica]], [self.C[fica]]
-        origem = [np.flatnonzero(fica)]
-        if F_novos is not None and len(F_novos):
-            extra = Malha(V, np.asarray(F_novos).reshape(-1, 3))
-            Fk = np.vstack([Fk, extra.F])
-            partes_A.append(extra.A)
-            partes_N.append(extra.N)
-            partes_C.append(extra.C)
-            linhas = np.arange(len(F_novos), dtype=np.int64)
-            if extra.validos is not None:
-                linhas = linhas[extra.validos]
-            origem.append(-1 - linhas)
-        usados = np.zeros(len(V), bool)
-        usados[Fk.ravel()] = True
-        if not usados.all():
-            renum = (np.cumsum(usados) - 1).astype(np.int32)
-            V, Fk = V[usados], renum[Fk]
-        nova = Malha._montada(np.ascontiguousarray(V), np.ascontiguousarray(Fk, dtype=np.int32), np.concatenate(partes_A),
-                              np.concatenate(partes_N), np.concatenate(partes_C), nome=self.nome)
-        return nova, np.concatenate(origem)
-
-    def mover(self, ids, posicoes):
-        """Malha nova com os vértices `ids` nas `posicoes` dadas (mesmos triângulos)."""
-        V = self.V.copy()
-        V[ids] = posicoes
-        mexeu = np.zeros(self.n_vertices, bool)
-        mexeu[ids] = True
-        f = np.flatnonzero(mexeu[self.F].any(axis=1))
-        A, N, C = self.A.copy(), self.N.copy(), self.C.copy()
-        a, b, c = V[self.F[f, 0]], V[self.F[f, 1]], V[self.F[f, 2]]
-        cr = np.cross(b - a, c - a)
-        a2 = np.linalg.norm(cr, axis=1)
-        A[f] = a2 / 2
-        N[f] = cr / np.maximum(a2, 1e-300)[:, None]
-        C[f] = (a + b + c) / 3.0
-        return Malha._montada(V, self.F, A, N, C, nome=self.nome)
-
-    def enxuta(self):
-        """Solta as tabelas auxiliares (arestas, índices): a malha guardada para desfazer ocupa só o essencial."""
-        self._cache = {}
-        return self
-
-    def sub(self, manter):
-        """Malha só com os triângulos marcados; devolve (malha, índice antigo de cada vértice novo)."""
-        F = self.F[manter]
-        usados = np.zeros(self.n_vertices, bool)
-        usados[F.ravel()] = True
-        novo = np.cumsum(usados) - 1
-        return Malha(self.V[usados], novo[F], nome=self.nome), np.flatnonzero(usados)
-
-    def copia(self):
-        return Malha(self.V.copy(), self.F.copy(), nome=self.nome)
 
     def amostrar(self, passo, semente=0, suavizar=2, maximo=1_500_000):
         """Pontos espalhados por igual na superfície (um a cada ~passo mm), com a normal suavizada.
         Devolve (pontos, normais, triângulo de cada ponto)."""
         rng = np.random.default_rng(semente)
         n = int(min(maximo, max(200, self.area / (passo * passo))))
-        prob = self.A / self.A.sum()
-        f = rng.choice(self.n_faces, size=n, p=prob)
+        acum = np.cumsum(self.A, dtype=np.float64)
+        acum /= acum[-1]
+        # sorteados em ordem: os triângulos saem em ordem e a leitura dos vértices anda para a frente na memória
+        f = np.minimum(acum.searchsorted(np.sort(rng.random(n)), side="right"), self.n_faces - 1)
+        del acum
         r1, r2 = rng.random(n), rng.random(n)
         s = np.sqrt(r1)
         b = np.c_[1 - s, s * (1 - r2), s * r2]
-        T = self.V[self.F[f]]
-        P = (T * b[:, :, None]).sum(1)
+        P = (self.cantos(f) * b[:, :, None]).sum(1)
         if suavizar:
             nv = self.normais_de_vertice(suavizar)
-            Nn = (nv[self.F[f]] * b[:, :, None]).sum(1)
+            Nn = (nv[self.F[f]].astype(np.float64) * b[:, :, None]).sum(1)
             c = np.linalg.norm(Nn, axis=1)
             ruim = c < 1e-9
             Nn = Nn / np.maximum(c, 1e-30)[:, None]
-            Nn[ruim] = self.N[f[ruim]]
+            if ruim.any():
+                Nn[ruim] = self.normais(f[ruim])
         else:
-            Nn = self.N[f].astype(np.float64)
+            Nn = self.normais(f)
         return P, Nn, f
+
+    # ---- índice espacial dos triângulos (pelo centro)
+    def grade(self):
+        if "grade" not in self._cache:
+            # uns 30 triângulos por célula ocupada
+            cel = float(np.clip(np.sqrt(30.0 * self.area / max(self.n_faces, 1)), 1.0, 30.0))
+            self._cache["grade"] = Grade.de_malha(self, cel)
+        return self._cache["grade"]
+
+    def soltar_tabelas(self, *nomes):
+        """Libera tabelas auxiliares que já serviram (todas, se nenhum nome for dado; a área e a caixa ficam)."""
+        for ch in (nomes or [c for c in self._cache if c not in ("area", "caixa", "am")]):
+            self._cache.pop(ch, None)
+
+    def sub(self, manter):
+        """Malha só com os triângulos marcados; devolve (malha, índice antigo de cada vértice novo)."""
+        F = self.F[manter]
+        usados = np.zeros(self.n_vertices, bool)
+        usados[F.ravel()] = True
+        novo = (np.cumsum(usados, dtype=np.int64) - 1).astype(np.int32)
+        return Malha(self.V[usados], novo[F], nome=self.nome), np.flatnonzero(usados)
 
 
 class Grade:
     """Índice espacial de pontos numa grade de células cúbicas: acha depressa os pontos dentro de uma bola.
-    Ocupa bem menos memória que uma árvore k-d e é montado em uma ordenação."""
+    Guarda só a ordem dos pontos por célula (4 bytes por ponto) e o começo de cada célula ocupada."""
 
-    def __init__(self, P, cel):
-        self.P = P
+    def __init__(self, pontos, n, lo, hi, cel, bloco=_BLOCO):
+        """pontos(i, j) devolve as coordenadas dos pontos i..j-1; pontos(idx) as dos índices dados."""
+        self.pontos = pontos
         self.cel = float(cel)
-        self.lo = P.min(0).astype(np.float64) if len(P) else np.zeros(3)
+        self.lo = np.asarray(lo, np.float64)
+        self.dim = np.maximum(np.floor((np.asarray(hi, np.float64) - self.lo) / self.cel).astype(np.int64) + 1, 1)
+        bits_i = max(1, int(n - 1).bit_length())
+        if int(self.dim[0] * self.dim[1] * self.dim[2] - 1).bit_length() + bits_i > 63:
+            raise ValueError("Malha grande demais para o índice espacial.")
+        emp = np.empty(n, np.int64)                         # célula e índice no mesmo número: uma ordenação só
+        for i in range(0, n, bloco):
+            j = min(n, i + bloco)
+            emp[i:j] = (self._celula(pontos(i, j)) << bits_i) | np.arange(i, j, dtype=np.int64)
+        emp.sort()
+        self.ordem = (emp & ((1 << bits_i) - 1)).astype(np.int32)
+        emp >>= bits_i
+        novo = np.empty(n, bool)
+        if n:
+            novo[0] = True
+            np.not_equal(emp[1:], emp[:-1], out=novo[1:])
+        self.chave = emp[novo]                              # células ocupadas, em ordem
+        self.ini = np.r_[np.flatnonzero(novo), n].astype(np.int64)
+
+    @classmethod
+    def de_malha(cls, m, cel):
+        lo, hi = m.caixa()
+
+        def pontos(i, j=None):
+            return m.centros(slice(i, j) if j is not None else i)
+        return cls(pontos, m.n_faces, lo, hi, cel)
+
+    @classmethod
+    def de_pontos(cls, P, cel):
+        P = np.asarray(P)
+
+        def pontos(i, j=None):
+            return P[i:j] if j is not None else P[i]
+        if not len(P):
+            return cls(pontos, 0, np.zeros(3), np.zeros(3), cel)
+        return cls(pontos, len(P), P.min(0), P.max(0), cel)
+
+    def _celula(self, P):
         q = np.floor((P - self.lo) / self.cel).astype(np.int64)
-        self.dim = (q.max(0) + 1) if len(P) else np.ones(3, np.int64)
-        chave = (q[:, 0] * self.dim[1] + q[:, 1]) * self.dim[2] + q[:, 2]
-        ordem = np.argsort(chave, kind="stable")
-        self.chave = chave[ordem]
-        self.ordem = ordem.astype(np.int32)
+        np.clip(q, 0, self.dim - 1, out=q)
+        return (q[:, 0] * self.dim[1] + q[:, 1]) * self.dim[2] + q[:, 2]
 
     def caixa(self, lo, hi):
         """Índices dos pontos nas células que tocam a caixa [lo, hi]."""
@@ -283,8 +343,8 @@ class Grade:
         b = np.clip(np.floor((np.asarray(hi, float) - self.lo) / self.cel).astype(np.int64), 0, self.dim - 1)
         ix, iy = np.meshgrid(np.arange(a[0], b[0] + 1), np.arange(a[1], b[1] + 1), indexing="ij")
         base = (ix.ravel() * self.dim[1] + iy.ravel()) * self.dim[2]
-        i0 = np.searchsorted(self.chave, base + a[2], "left")
-        i1 = np.searchsorted(self.chave, base + b[2], "right")
+        i0 = self.ini[np.searchsorted(self.chave, base + a[2], "left")]
+        i1 = self.ini[np.searchsorted(self.chave, base + b[2], "right")]
         n = i1 - i0
         tem = n > 0
         if not tem.any():
@@ -299,7 +359,8 @@ class Grade:
         idx = self.caixa(c - r, c + r)
         if not len(idx):
             return idx
-        d = self.P[idx] - c
+        idx.sort()                                          # em ordem, a leitura dos vértices anda para a frente
+        d = self.pontos(idx) - c
         return idx[np.einsum("ij,ij->i", d, d) <= r * r]
 
     def bolas(self, centros, r):
@@ -312,8 +373,11 @@ class Grade:
 
 
 # ---------------------------------------------------------------------------
-# leitura e gravação
+# leitura
 # ---------------------------------------------------------------------------
+
+_REG = np.dtype([("n", "<f4", 3), ("v", "<f4", (3, 3)), ("a", "<u2")])       # um triângulo do STL binário: 50 bytes
+
 
 def _stl_binario(caminho):
     """Nº de triângulos se o arquivo é um STL binário bem formado; None se não é (STL de texto, por exemplo)."""
@@ -340,58 +404,88 @@ def contar_triangulos(caminho):
     return None
 
 
-def juntar_vertices(P):
-    """Junta vértices repetidos (iguais bit a bit). P: N×3 float32. Devolve (V float64, índice do vértice de cada ponto).
-    Os vértices ficam na ordem em que aparecem, o que mantém vizinhos na malha vizinhos na memória."""
-    P = np.ascontiguousarray(P, dtype=np.float32)
-    P += np.float32(0.0)                            # -0.0 vira +0.0: o mesmo ponto com os mesmos bits
-    n = len(P)
-    u = P.view(np.uint32).reshape(n, 3)
+def _codigo(P):
+    """Um número de 64 bits por ponto (float32 N×3): pontos iguais bit a bit têm o mesmo código."""
+    u = P.view(np.uint32).reshape(-1, 3)
     h = u[:, 0].astype(np.uint64) * np.uint64(0x9E3779B97F4A7C15)
     h ^= (u[:, 1].astype(np.uint64) * np.uint64(0xC2B2AE3D27D4EB4F)) >> np.uint64(7)
     h += u[:, 2].astype(np.uint64) * np.uint64(0x165667B19E3779F9)
     h ^= h >> np.uint64(29)
-    ordem = np.argsort(h, kind="stable")            # estável: dentro de cada grupo, o primeiro é o de menor índice
-    hs = h[ordem]
-    del h
-    novo = np.empty(n, bool)
-    novo[0] = True
-    np.not_equal(hs[1:], hs[:-1], out=novo[1:])
-    del hs
-    grupo = np.cumsum(novo, dtype=np.int64) - 1     # grupo de cada ponto, na ordem do sorteio
-    prim = ordem[novo]                              # primeiro ponto de cada grupo
-    # renumera os grupos pela ordem de aparição
-    rank = np.empty(len(prim), np.int32)
-    rank[np.argsort(prim, kind="stable")] = np.arange(len(prim), dtype=np.int32)
-    inv = np.empty(n, np.int32)
-    inv[ordem] = rank[grupo]
-    del grupo, ordem
-    V32 = np.empty((len(prim), 3), np.float32)
-    V32[rank] = P[prim]
-    # confere (duas coordenadas diferentes com o mesmo código são quase impossíveis, mas custa pouco conferir)
-    for i in range(0, n, 4 * _BLOCO):
-        if not np.array_equal(V32[inv[i:i + 4 * _BLOCO]], P[i:i + 4 * _BLOCO]):
-            Vu, inv = np.unique(P, axis=0, return_inverse=True)
-            return Vu.astype(np.float64), inv.ravel().astype(np.int32)
-    return V32.astype(np.float64), inv
+    return h
 
 
-def _ler_stl(caminho, n):
-    """STL binário lido direto, em blocos, sem passar por tabelas intermediárias do tamanho do arquivo."""
-    reg = np.dtype([("n", "<f4", 3), ("v", "<f4", (3, 3)), ("a", "<u2")])
-    P = np.empty((n, 3, 3), np.float32)
+def _blocos_stl(caminho, n, bloco=_BLOCO):
+    """Os vértices do STL, bloco a bloco: (K×3 float32 só dos triângulos sem coordenada inválida)."""
     with open(caminho, "rb") as fh:
         fh.seek(84)
-        for i in range(0, n, _BLOCO):
-            k = min(_BLOCO, n - i)
-            b = np.fromfile(fh, dtype=reg, count=k)
+        for i in range(0, n, bloco):
+            k = min(bloco, n - i)
+            b = np.fromfile(fh, dtype=_REG, count=k)
             if len(b) < k:
                 raise ValueError("arquivo STL incompleto")
-            P[i:i + k] = b["v"]
-    P = P.reshape(-1, 3)
-    bom = np.isfinite(P).all(axis=1).reshape(n, 3).all(axis=1)
-    if not bom.all():
-        P = P.reshape(n, 3, 3)[bom].reshape(-1, 3)
+            P = np.ascontiguousarray(b["v"])
+            del b
+            bom = np.isfinite(P).all(axis=(1, 2))
+            if not bom.all():
+                P = P[bom]
+            P = P.reshape(-1, 3)
+            P += np.float32(0.0)                    # -0.0 vira +0.0: o mesmo ponto com os mesmos bits
+            yield P
+
+
+def _ler_stl(caminho, n, log=None):
+    """STL binário lido em duas passadas pelo arquivo, sem nunca ter os triângulos soltos todos na memória.
+
+    1ª passada: um código de 64 bits por ponto; ordenados, os códigos distintos são os vértices.
+    2ª passada: cada ponto acha o seu vértice pelo código; os vértices são numerados na ordem em que aparecem (o
+    que mantém vizinhos na malha vizinhos na memória) e cada bloco é conferido contra as coordenadas lidas."""
+    h = np.empty(3 * n, np.uint64)
+    k = 0
+    for P in _blocos_stl(caminho, n):
+        h[k:k + len(P)] = _codigo(P)
+        k += len(P)
+    h = h[:k]
+    n_bons = k // 3
+    h.sort()
+    novo = np.empty(k, bool)
+    if k:
+        novo[0] = True
+        np.not_equal(h[1:], h[:-1], out=novo[1:])
+    u = h[novo]                                     # códigos distintos, em ordem
+    del h, novo
+    nv = len(u)
+    num = np.full(nv, -1, np.int32)                 # código (pela posição em u) -> número do vértice
+    V = np.empty((nv, 3), np.float32)
+    F = np.empty((n_bons, 3), np.int32)
+    feitos, t = 0, 0
+    for P in _blocos_stl(caminho, n):
+        pos = np.searchsorted(u, _codigo(P))
+        ids = num[pos]
+        falta = np.flatnonzero(ids < 0)
+        if len(falta):
+            cod, prim = np.unique(pos[falta], return_index=True)        # primeira vez de cada vértice novo no bloco
+            ordem = np.argsort(prim, kind="stable")
+            num[cod[ordem]] = feitos + np.arange(len(cod), dtype=np.int32)
+            V[feitos:feitos + len(cod)] = P[falta[prim[ordem]]]
+            feitos += len(cod)
+            ids = num[pos]
+        if not np.array_equal(V[ids], P):
+            return None                             # dois pontos diferentes com o mesmo código: quase impossível
+        F[t:t + len(P) // 3] = ids.reshape(-1, 3)
+        t += len(P) // 3
+    return V[:feitos], F
+
+
+def juntar_vertices(P):
+    """Junta vértices repetidos (iguais bit a bit), pelo caminho simples. P: N×3 float32. Devolve (V, índice)."""
+    P = np.ascontiguousarray(P, dtype=np.float32)
+    P += np.float32(0.0)
+    Vu, inv = np.unique(P, axis=0, return_inverse=True)
+    return Vu, inv.ravel().astype(np.int32)
+
+
+def _ler_stl_simples(caminho, n):
+    P = np.concatenate(list(_blocos_stl(caminho, n)))
     V, inv = juntar_vertices(P)
     return V, inv.reshape(-1, 3)
 
@@ -406,13 +500,14 @@ def carregar(caminho):
     n = contar_triangulos(caminho)
     try:
         if n:
-            V, F = _ler_stl(caminho, n)
+            r = _ler_stl(caminho, n) or _ler_stl_simples(caminho, n)
+            V, F = r
         else:
             import trimesh
             m = trimesh.load(caminho, force="mesh", process=True)
             if getattr(m, "faces", None) is None or len(m.faces) == 0:
                 raise ValueError("O arquivo não contém triângulos. Exporte a MALHA (STL/PLY/OBJ), não só a nuvem de pontos.")
-            V = np.asarray(m.vertices, float)
+            V = np.asarray(m.vertices, np.float32)
             F = np.asarray(m.faces)
             del m
     except MemoryError:
@@ -426,7 +521,7 @@ def carregar(caminho):
     if not np.isfinite(V).all():
         bom = np.isfinite(V).all(axis=1)
         F = F[bom[F].all(axis=1)]
-        V = np.where(np.isfinite(V), V, 0.0)
+        V = np.where(np.isfinite(V), V, np.float32(0.0))
     malha = Malha(V, F, nome=caminho)
     if malha.n_faces == 0:
         raise ValueError("O arquivo não contém triângulos válidos. Exporte a MALHA (STL/PLY/OBJ), não só a nuvem de pontos.")
@@ -440,11 +535,13 @@ def sem_soltos(m):
     V = m.V
     if len(V) < 100:
         return m, 0
-    lo, hi = np.percentile(V, [0.5, 99.5], axis=0)
+    passo = max(1, len(V) // 2_000_000)             # os limites saem de uma amostra: basta
+    lo, hi = np.percentile(V[::passo].astype(np.float64), [0.5, 99.5], axis=0)
     folga = 0.5 * (hi - lo) + 1.0
-    fora = ((V < lo - folga) | (V > hi + folga)).any(axis=1)
-    if not fora.any():
+    lo_g, hi_g = m.caixa()
+    if (lo_g >= lo - folga).all() and (hi_g <= hi + folga).all():
         return m, 0
+    fora = ((V < lo - folga) | (V > hi + folga)).any(axis=1)
     fica = ~fora[m.F].any(axis=1)
     if fica.sum() < 0.5 * len(m.F):
         return m, 0
@@ -452,37 +549,79 @@ def sem_soltos(m):
     return nova, int((~fica).sum())
 
 
-def gravar_stl(m, caminho, cabecalho="Cleanmold - malha limpa (mm)"):
+# ---------------------------------------------------------------------------
+# gravação (com a máscara dos triângulos que ficam: a malha limpa não é montada na memória)
+# ---------------------------------------------------------------------------
+
+def gravar_stl(m, caminho, manter=None, cabecalho="Cleanmold - malha limpa (mm)", log=None):
     """STL binário (o formato que o Control X, o Design X e o SolidWorks abrem sem perguntar nada)."""
-    n = m.n_faces
+    n = m.n_faces if manter is None else int(np.count_nonzero(manter))
     cab = cabecalho.encode("ascii", "replace")[:80].ljust(80, b" ")
     tmp = str(caminho) + ".parcial"
-    tipo = np.dtype([("n", "<f4", 3), ("v", "<f4", (3, 3)), ("a", "<u2")])
-    with open(tmp, "wb") as fh:
-        fh.write(cab)
-        fh.write(np.uint32(n).tobytes())
-        for i in range(0, n, _BLOCO):
-            f = m.F[i:i + _BLOCO]
-            reg = np.zeros(len(f), dtype=tipo)
-            reg["n"] = m.N[i:i + _BLOCO]
-            reg["v"] = m.V[f]
-            reg.tofile(fh)
-    os.replace(tmp, caminho)
+    try:
+        with open(tmp, "wb") as fh:
+            fh.write(cab)
+            fh.write(np.uint32(n).tobytes())
+            for i in range(0, m.n_faces, _BLOCO):
+                f = m.F[i:i + _BLOCO]
+                if manter is not None:
+                    f = f[manter[i:i + _BLOCO]]
+                    if not len(f):
+                        continue
+                T = m.V[f]
+                reg = np.zeros(len(f), dtype=_REG)
+                a = T[:, 0].astype(np.float64)
+                cr = np.cross(T[:, 1] - a, T[:, 2] - a)
+                reg["n"] = cr / np.maximum(np.linalg.norm(cr, axis=1), 1e-300)[:, None]
+                reg["v"] = T
+                reg.tofile(fh)
+                if log and m.n_faces > 4 * _BLOCO:
+                    log(f"Gravando a malha… {int(100 * min(i + _BLOCO, m.n_faces) / m.n_faces)}%")
+        os.replace(tmp, caminho)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
     return caminho
 
 
-def gravar_ply(m, caminho):
-    """PLY binário: mantém os vértices compartilhados (arquivo menor que o STL e sem costura para refazer)."""
+def gravar_ply(m, caminho, manter=None, log=None):
+    """PLY binário: mantém os vértices compartilhados (arquivo com menos da metade do tamanho do STL, mesma malha)."""
+    n = m.n_faces if manter is None else int(np.count_nonzero(manter))
+    renum = None
+    nv = m.n_vertices
+    if manter is not None:
+        usados = np.zeros(m.n_vertices, bool)
+        for i in range(0, m.n_faces, _BLOCO):
+            usados[m.F[i:i + _BLOCO][manter[i:i + _BLOCO]].ravel()] = True
+        nv = int(np.count_nonzero(usados))
+        if nv < m.n_vertices:
+            renum = (np.cumsum(usados, dtype=np.int64) - 1).astype(np.int32)
     cab = ("ply\nformat binary_little_endian 1.0\ncomment Cleanmold - malha limpa (mm)\n"
-           f"element vertex {m.n_vertices}\nproperty float x\nproperty float y\nproperty float z\n"
-           f"element face {m.n_faces}\nproperty list uchar int vertex_indices\nend_header\n").encode("ascii")
-    reg = np.zeros(m.n_faces, dtype=[("k", "u1"), ("i", "<i4", 3)])
-    reg["k"] = 3
-    reg["i"] = m.F
+           f"element vertex {nv}\nproperty float x\nproperty float y\nproperty float z\n"
+           f"element face {n}\nproperty list uchar int vertex_indices\nend_header\n").encode("ascii")
     tmp = str(caminho) + ".parcial"
-    with open(tmp, "wb") as fh:
-        fh.write(cab)
-        fh.write(m.V.astype("<f4").tobytes())
-        fh.write(reg.tobytes())
-    os.replace(tmp, caminho)
+    try:
+        with open(tmp, "wb") as fh:
+            fh.write(cab)
+            for i in range(0, m.n_vertices, 4 * _BLOCO):
+                v = m.V[i:i + 4 * _BLOCO]
+                if renum is not None:
+                    v = v[usados[i:i + 4 * _BLOCO]]
+                fh.write(np.ascontiguousarray(v, dtype="<f4").tobytes())
+            for i in range(0, m.n_faces, _BLOCO):
+                f = m.F[i:i + _BLOCO]
+                if manter is not None:
+                    f = f[manter[i:i + _BLOCO]]
+                    if not len(f):
+                        continue
+                reg = np.empty(len(f), dtype=[("k", "u1"), ("i", "<i4", 3)])
+                reg["k"] = 3
+                reg["i"] = f if renum is None else renum[f]
+                reg.tofile(fh)
+                if log and m.n_faces > 4 * _BLOCO:
+                    log(f"Gravando a malha… {int(100 * min(i + _BLOCO, m.n_faces) / m.n_faces)}%")
+        os.replace(tmp, caminho)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
     return caminho

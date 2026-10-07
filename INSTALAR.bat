@@ -45,7 +45,7 @@ if exist "%~dp0pacotes\" (
   echo Instalando a partir da pasta "pacotes", sem internet...
   "%PY%" -m pip install --no-warn-script-location --disable-pip-version-check --no-index --find-links "%~dp0pacotes" -r "%~dp0requirements.txt"
 ) else (
-  echo Baixando as bibliotecas: cerca de 320 MB. Leva de alguns minutos a meia hora, conforme a internet.
+  echo Baixando as bibliotecas: cerca de 60 MB. Leva um ou dois minutos, conforme a internet.
   "%PY%" -m pip install --no-warn-script-location --disable-pip-version-check -r "%~dp0requirements.txt"
 )
 if errorlevel 1 (
@@ -60,11 +60,11 @@ if errorlevel 1 (
 )
 echo.
 echo Conferindo as bibliotecas, aguarde...
-"%PY%" -c "import numpy, scipy, trimesh, matplotlib, ezdxf, cadquery, tkinter" >nul 2>nul
+"%PY%" -c "import numpy, scipy, trimesh, tkinter" >nul 2>nul
 if errorlevel 1 (
   echo.
   echo As bibliotecas foram instaladas, mas nao carregam neste Python. O motivo:
-  "%PY%" -c "import numpy, scipy, trimesh, matplotlib, ezdxf, cadquery, tkinter"
+  "%PY%" -c "import numpy, scipy, trimesh, tkinter"
   echo Tire uma foto desta tela e envie para quem cuida do Cleanmold.
   popd
   pause

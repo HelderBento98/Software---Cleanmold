@@ -14,13 +14,12 @@ O Cleanmold usa os programas e bibliotecas abaixo, de codigo aberto. Cada um con
 autores. O texto completo de cada licenca esta na pasta do componente:
   python\\LICENSE.txt                               (Python)
   python\\Lib\\site-packages\\<nome>-<versao>.dist-info\\  (bibliotecas)
-  cleanmold\\web\\vendor\\                               (three.js, three-mesh-bvh e fontes IBM Plex)
+  cleanmold\\web\\vendor\\                               (three.js e fontes IBM Plex)
 
 As bibliotecas sao arquivos separados e podem ser substituidas por outra versao compativel.
 
 Python 3.13 (distribuicao WinPython)        Python Software Foundation License
 three.js r160                               MIT
-three-mesh-bvh 0.9.15                       MIT
 IBM Plex Sans / IBM Plex Mono               SIL Open Font License 1.1
 
 Bibliotecas Python

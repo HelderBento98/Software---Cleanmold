@@ -1,6 +1,7 @@
 """Peças de teste: forma exata (distância com sinal) das peças sobre as quais os alvos foram montados.
 
-A validação usa estas funções para medir o erro do remendo: cada vértice novo deveria cair sobre a peça."""
+A validação usa estas funções para conferir o corte: depois da limpeza, nada pode sobrar acima da peça, e da
+superfície dela só pode ter saído o disco debaixo de cada pé."""
 import numpy as np
 
 

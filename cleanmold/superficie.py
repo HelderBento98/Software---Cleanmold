@@ -104,6 +104,9 @@ class Cone(Modelo):
         return f"cone de {2 * np.degrees(np.arctan(abs(self.k))):.1f}° (Ø {2 * self.r0:.1f} mm no alvo)"
 
 
+QUASE_TUDO = 0.96           # fração dos pontos a partir da qual um modelo já explica a vizinhança
+
+
 def _sigma(d):
     """Espalhamento robusto dos resíduos."""
     return float(1.4826 * np.median(np.abs(d - np.median(d)))) if len(d) else float("inf")
@@ -136,6 +139,10 @@ def ajustar(P, N, c, a, tol=0.35, registro=None):
     plano = Plano(pc, pn)
     d = plano.dist(P)
     cands.append((plano, _sigma(d[np.abs(d) < 3 * tol]) if (np.abs(d) < 3 * tol).sum() > 10 else 9.0, _dentro(d, tol), 0))
+    if cands[0][2] >= QUASE_TUDO:                    # o plano já explica a vizinhança: nenhum outro modelo ganharia dele
+        if registro is not None:
+            registro.append([(plano.nome, round(cands[0][1], 3), round(cands[0][2], 3))])
+        return cands[0][:3]
 
     # ---- superfície suave de 2º grau sobre o plano (curvatura leve: fundidos, chapas calandradas, raios grandes)
     if len(P) >= 40:
@@ -203,7 +210,8 @@ def ajustar(P, N, c, a, tol=0.35, registro=None):
                         d = cil.dist(P)
                         sc = _sigma(d[np.abs(d) < 3 * tol]) if (np.abs(d) < 3 * tol).sum() > 10 else 9.0
                         cands.append((cil, sc, _dentro(d, tol), 2))
-                        kc, ka, kr0, kk, _ = ajuste.cone(P, ca, cc)
+                        # o cone só ganha de um modelo mais simples se explicar bem mais pontos do que ele
+                        kc, ka, kr0, kk, _ = (ajuste.cone(P, ca, cc) if max(x[2] for x in cands) < QUASE_TUDO else (cc, ca, cr, 0.0, 0.0))
                         if abs(kk) > 0.02 and kr0 > 3.0:
                             # r0 referido à altura do alvo
                             zc = (c - kc) @ ka

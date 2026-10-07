@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" sizes="256x256" href="marca/icone-256.png">
 <link rel="icon" type="image/png" sizes="32x32" href="marca/icone-32.png">
 <link rel="stylesheet" href="app.css">
-<script type="importmap">{"imports": {"three": "./vendor/three.module.min.js", "three-mesh-bvh": "./vendor/three-mesh-bvh.module.js"}}</script>
+<script type="importmap">{"imports": {"three": "./vendor/three.module.min.js"}}</script>
 </head>
 <body>
 <header class="topo">
@@ -21,7 +21,7 @@
       <div class="menu-caixa" hidden>
         <button data-acao="abrir">Abrir malha…</button>
         <hr>
-        <button data-acao="exportar" data-precisa-saida>Gerar arquivos…</button>
+        <button data-acao="exportar" data-precisa-saida>Salvar a malha limpa…</button>
       </div></div>
     <div class="menu"><button aria-haspopup="true" aria-expanded="false">Alvos</button>
       <div class="menu-caixa" hidden>
@@ -30,32 +30,15 @@
         <button data-acao="desmarcar" data-precisa>Desmarcar todos</button>
         <hr>
         <button data-acao="manual" data-precisa>Indicar à mão um alvo que faltou…</button>
+        <button data-acao="reanalisar" data-precisa>Procurar os alvos de novo</button>
         <hr>
         <button data-acao="limpar" data-precisa>Retirar os alvos marcados</button>
-      </div></div>
-    <div class="menu"><button aria-haspopup="true" aria-expanded="false">Malha</button>
-      <div class="menu-caixa" hidden>
-        <button data-acao="otimizar" data-precisa>Otimizar (menos triângulos)…</button>
-        <hr>
-        <button data-acao="pincel" data-precisa>Pincel de seleção</button>
-        <button data-acao="furos" data-precisa>Procurar furos</button>
-        <button data-acao="examinar" data-precisa>Examinar e reparar</button>
-        <hr>
-        <button data-acao="desfazer" data-desfazer disabled>Desfazer</button>
-      </div></div>
-    <div class="menu"><button aria-haspopup="true" aria-expanded="false">Sólido</button>
-      <div class="menu-caixa" hidden>
-        <button data-acao="solido" data-precisa>Reconhecer peça de revolução</button>
-      </div></div>
-    <div class="menu"><button aria-haspopup="true" aria-expanded="false">Análise</button>
-      <div class="menu-caixa" hidden>
-        <button data-acao="reanalisar" data-arquivo>Procurar os alvos de novo</button>
-        <hr>
-        <button data-acao="registro">Ver registro</button>
+        <button data-acao="desfazer" data-desfazer disabled>Desfazer a retirada</button>
       </div></div>
     <div class="menu"><button aria-haspopup="true" aria-expanded="false">Ajuda</button>
       <div class="menu-caixa" hidden>
         <button data-acao="ajuda">Como usar</button>
+        <button data-acao="registro">Ver registro</button>
         <button data-acao="sobre">Sobre o Cleanmold</button>
       </div></div>
   </nav>
@@ -78,16 +61,11 @@
     </section>
     <section id="secOpcoes" hidden>
       <h2 class="rotulo">Recorte</h2>
-      <label class="opcao">Margem em volta do recorte (mm)<input type="text" id="opMargem" inputmode="decimal" autocomplete="off">
-        <small>Quanto o furo entra na superfície limpa antes de ser fechado.</small></label>
+      <label class="opcao">Margem em volta do pé (mm)<input type="text" id="opMargem" inputmode="decimal" autocomplete="off">
+        <small>Quanto o furo passa do pé, para o contorno cair em superfície limpa.</small></label>
       <label class="opcao">Alcance das rebarbas (mm)<input type="text" id="opAlcance" inputmode="decimal" autocomplete="off">
         <small>Até onde, em volta do pé, o que estiver grudado nele é recortado quando a rebarba não termina sozinha.</small></label>
-      <label class="marcar"><input type="checkbox" id="opSoltos" checked> Apagar pedaços soltos</label>
-    </section>
-    <section id="secIdent" hidden>
-      <h2 class="rotulo">Identificação</h2>
-      <label class="campo">Peça / desenho<input type="text" id="idPeca" placeholder="a informar" autocomplete="off"></label>
-      <label class="campo">Responsável<input type="text" id="idResp" placeholder="a informar" autocomplete="off"></label>
+      <label class="marcar"><input type="checkbox" id="opSoltos" checked> Apagar também as lascas soltas</label>
     </section>
   </aside>
 
@@ -98,12 +76,8 @@
           <svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 2-2 6z"/></svg></button>
         <button class="icone" data-ferr="mover" aria-label="Mover a vista" title="Mover a vista: arraste para deslocar">
           <svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg></button>
-        <button class="icone" data-ferr="pincel" aria-label="Pincel de seleção" title="Pincel: arraste sobre a malha para pintar o que vai ser retirado, alisado ou preenchido" disabled>
-          <svg viewBox="0 0 24 24"><path d="M14.5 4.5l5 5L10 19H5v-5z"/><path d="M12 7l5 5"/><path d="M3 21c2 0 3-1 3-2.5"/></svg></button>
         <button class="icone" data-ferr="manual" aria-label="Indicar um alvo à mão" title="Indicar à mão um alvo que faltou: clique no pé dele" disabled>
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg></button>
-        <button class="icone" id="btDesfazer" data-desfazer aria-label="Desfazer" title="Desfazer" disabled>
-          <svg viewBox="0 0 24 24"><path d="M8 7L4 11l4 4"/><path d="M4 11h10a6 6 0 0 1 0 12h-2"/></svg></button>
         <button class="icone" id="btAjustar" aria-label="Ajustar à tela" title="Ajustar à tela">
           <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
       </div>
@@ -111,13 +85,11 @@
       <div class="fases" role="tablist" aria-label="O que mostrar">
         <button role="tab" data-fase="antes" disabled>Antes</button>
         <button role="tab" data-fase="depois" disabled>Depois</button>
-        <button role="tab" data-fase="solido" disabled>Sólido</button>
       </div>
       <div class="sep"></div>
       <div class="p3-grupo"><span class="p3-nome">Vista</span>
         <div class="seg"><button data-cam="iso" class="ativo">Isométrica</button><button data-cam="cima">Cima</button><button data-cam="frente">Frente</button><button data-cam="lado">Lado</button></div></div>
       <div class="espaco"></div>
-      <label class="desl" id="grpOpacidade" hidden title="Transparência da malha escaneada sobre o sólido">Malha<input type="range" id="opMalha" min="0" max="100" value="35"></label>
     </div>
 
     <div class="vista" id="vista">
@@ -126,32 +98,9 @@
           <canvas id="tela"></canvas>
           <div class="dica-ferr" id="dicaManual" hidden>
             <span>Clique no <b>pé</b> do alvo que faltou</span>
-            <label>Ø do recorte <input type="text" id="manDiam" value="19" inputmode="decimal"> mm</label>
+            <label>Ø do pé <input type="text" id="manDiam" value="19" inputmode="decimal"> mm</label>
             <button type="button" id="manSair">Terminar</button>
           </div>
-          <div class="barra-pincel" id="barraPincel" hidden>
-            <div class="bp-linha">
-              <b>Pincel</b>
-              <label>Ø <input type="text" id="pinDiam" value="25" inputmode="decimal" aria-label="Diâmetro do pincel em milímetros"> mm</label>
-              <input type="range" id="pinDesl" min="0" max="100" value="40" aria-label="Diâmetro do pincel">
-              <div class="seg" role="group" aria-label="Modo do pincel"><button data-pin="1" class="ativo">Pintar</button><button data-pin="0">Despintar</button></div>
-              <span class="bp-conta" id="pinConta">nada pintado</span>
-              <button type="button" class="bp-x" id="pinSair" aria-label="Fechar o pincel">×</button>
-            </div>
-            <div class="bp-linha">
-              <button type="button" class="bp-acao forte" data-edit="retirar" title="Apaga o que está pintado (e o que ficar pendurado no corte) e fecha o furo seguindo a superfície em volta">Retirar e preencher</button>
-              <button type="button" class="bp-acao" data-edit="preencher" title="Fecha o vazio contornado pela pintura (pinte por cima da beirada do vazio)">Preencher o vazio</button>
-              <button type="button" class="bp-acao" data-edit="alisar" title="Alisa a região pintada; o contorno dela não se mexe">Alisar</button>
-              <select id="pinForca" aria-label="Intensidade do alisamento" title="Intensidade do alisamento"><option value="1">leve</option><option value="2" selected>médio</option><option value="3">refazer liso</option></select>
-              <button type="button" class="bp-acao" data-edit="apagar" title="Só apaga o que está pintado, deixando o furo aberto">Apagar</button>
-              <span class="espaco"></span>
-              <button type="button" class="bp-acao fraco" data-sel="crescer" title="Aumenta a pintura em uma faixa de triângulos">+</button>
-              <button type="button" class="bp-acao fraco" data-sel="encolher" title="Encolhe a pintura em uma faixa de triângulos">−</button>
-              <button type="button" class="bp-acao fraco" data-sel="limpar">Limpar pintura</button>
-            </div>
-            <div class="bp-dica">Arraste com o botão esquerdo para pintar · Shift despinta · botão direito gira · botão do meio desloca · [ e ] mudam o diâmetro</div>
-          </div>
-          <div class="ocupadinho" id="ocupadinho" hidden><i></i><span id="ocupTexto">Trabalhando…</span></div>
           <div class="legenda-cores" id="legendaCores" hidden></div>
         </div>
       </div>
@@ -159,7 +108,7 @@
         <div class="vazio-caixa">
           <div class="vazio-erro" id="vazioErro" role="alert" hidden></div>
           <h1>Abra a malha escaneada</h1>
-          <p>Exporte a malha do Control X ou do Design X em STL, em milímetros, com os alvos como saíram do escaneamento. Não precisa alinhar nem separar nada.</p>
+          <p>Exporte a malha do Control X ou do Design X em STL, em milímetros, com os alvos como saíram do escaneamento. Não precisa alinhar, separar nem reduzir nada.</p>
           <button class="bt primario grande" data-acao="abrir">Abrir malha</button>
           <p class="fraco">ou arraste o arquivo (STL, PLY, OBJ ou OFF) para esta janela</p>
         </div>
@@ -181,17 +130,11 @@
       <ol class="passos">
         <li><b>Abra a malha.</b> O Cleanmold procura os alvos pelo padrão deles: o pé cilíndrico em pé sobre a peça e o corpo em cima (pescoço, esfera, dodecaedro), mesmo amassado ou partido em pedaços soltos.</li>
         <li><b>Confira a lista.</b> Cada alvo aparece em verde no modelo. Desmarque o que não for alvo; indique à mão o que tiver faltado.</li>
-        <li><b>Retire.</b> O alvo é recortado e o furo é fechado continuando a superfície que está em volta: plano, cilindro, esfera, cone ou superfície suave, com aresta viva quando o alvo estava na beirada.</li>
-        <li><b>Repare o que faltar.</b> Na aba Malha e reparo: otimizar (menos triângulos, mesma forma), pincel para retirar ou alisar uma região, furos fechados seguindo a geometria em volta e reparo automático.</li>
-        <li><b>Gere os arquivos.</b> Malha limpa em STL, relatório do que foi feito e, para peça de revolução, sólido STEP e macro que reconstrói a peça no SolidWorks.</li>
+        <li><b>Retire.</b> Cada alvo é recortado rente à peça e fica um furo no lugar do pé. O resto da malha não é tocado: sai como entrou, triângulo por triângulo.</li>
+        <li><b>Salve a malha limpa.</b> Em STL (ou PLY, que ocupa menos da metade), para fechar os furos e seguir o trabalho no Design X.</li>
       </ol>
     </div>
-    <div class="abas-dir" id="abasDir" hidden role="tablist" aria-label="Painel">
-      <button role="tab" data-aba="alvos" class="ativa">Alvos</button>
-      <button role="tab" data-aba="malha">Malha e reparo</button>
-    </div>
     <div class="dir-cheio" id="dirCheio" hidden></div>
-    <div class="dir-cheio" id="dirMalha" hidden></div>
   </aside>
 </div>
 
@@ -203,51 +146,22 @@
   <span class="fraco" id="stVersao">Cleanmold</span>
 </footer>
 
-<!-- gerar arquivos -->
+<!-- salvar a malha limpa -->
 <div class="fundo" id="mExportar" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="tExp">
-    <header><h2 id="tExp">Gerar arquivos</h2><button class="fechar" data-fechar aria-label="Fechar">×</button></header>
+    <header><h2 id="tExp">Salvar a malha limpa</h2><button class="fechar" data-fechar aria-label="Fechar">×</button></header>
     <div class="modal-corpo">
       <fieldset class="itens" id="expItens">
-        <legend>O que gerar</legend>
-        <label class="item-exp"><input type="checkbox" value="stl"><span><b id="expNomeMalha">Malha limpa</b><i>STL binário, para voltar ao Control X, ao Design X ou abrir no SolidWorks</i><small id="expTamanho"></small></span></label>
-        <label class="item-exp"><input type="checkbox" value="pdf"><span><b>Relatório</b><i>PDF: cada alvo, a referência usada no remendo, o que foi otimizado ou reparado e o que conferir</i></span></label>
-        <label class="item-exp" id="itStep"><input type="checkbox" value="step"><span><b>Sólido 3D</b><i>STEP de corpo único (abre como peça) e o perfil em DXF</i><small></small></span></label>
-        <label class="item-exp" id="itMacro"><input type="checkbox" value="macro"><span><b>Macro do SolidWorks</b><i>Reconstrói a peça passo a passo, com esboço, cotas e árvore de projeto</i><small></small></span></label>
-        <div class="itens-sec">
-          <label class="marcar" title="Arquivo menor que o STL, com a mesma malha"><input type="checkbox" value="ply"> Malha em PLY (arquivo menor)</label>
-          <label class="marcar"><input type="checkbox" value="html"> Relatório em HTML</label>
-          <label class="marcar"><input type="checkbox" value="csv"> Planilha CSV</label>
-        </div>
+        <legend>Formato</legend>
+        <label class="item-exp"><input type="checkbox" value="stl"><span><b>STL</b><i>Binário. Abre no Control X, no Design X e no SolidWorks sem perguntar nada.</i><small id="expStl"></small></span></label>
+        <label class="item-exp"><input type="checkbox" value="ply"><span><b>PLY</b><i>A mesma malha em menos da metade do tamanho: cada vértice é gravado uma vez só. Formato aberto, aceito pelos programas de escaneamento.</i><small id="expPly"></small></span></label>
       </fieldset>
       <label class="campo">Gravar em
         <span class="linha"><input type="text" id="expPasta" spellcheck="false" class="mono"><button class="bt" id="btPasta" type="button">Escolher pasta</button></span>
       </label>
       <div class="exp-resultado" id="expResultado" hidden></div>
     </div>
-    <footer><button class="bt" data-fechar>Fechar</button><button class="bt primario" id="btGerar">Gerar</button></footer>
-  </div>
-</div>
-
-<!-- malha grande -->
-<div class="fundo" id="mGrande" hidden>
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="tGrande">
-    <header><h2 id="tGrande">Malha grande</h2><button class="fechar" data-fechar aria-label="Fechar">×</button></header>
-    <div class="modal-corpo">
-      <div id="grandeTexto"></div>
-      <fieldset class="itens" id="grandeItens">
-        <legend>Como abrir</legend>
-        <label class="item-exp"><input type="radio" name="grande" value="otimizar" checked><span><b>Otimizar ao abrir <em class="rec">recomendado</em></b>
-          <i>Junta triângulos onde a peça é lisa e mantém os detalhes. A procura dos alvos e todas as ferramentas ficam várias vezes mais rápidas. O desvio é medido e mostrado.</i></span></label>
-        <div class="grande-tol" id="grandeTol">
-          <label class="campo">Tolerância (quanto a malha nova pode se afastar da original)
-            <select id="grandeNivel"><option value="0.02">Fiel · 0,02 mm</option><option value="0.05" selected>Equilibrado · 0,05 mm</option><option value="0.1">Leve · 0,10 mm</option></select></label>
-        </div>
-        <label class="item-exp" id="grandeInteira"><input type="radio" name="grande" value="inteira"><span><b>Abrir inteira</b>
-          <i>Todos os triângulos do arquivo. Dá para otimizar depois, pelo painel Malha e reparo.</i><small></small></span></label>
-      </fieldset>
-    </div>
-    <footer><button class="bt" data-fechar>Cancelar</button><button class="bt primario" id="btGrande">Abrir</button></footer>
+    <footer><button class="bt" data-fechar>Fechar</button><button class="bt primario" id="btGerar">Salvar</button></footer>
   </div>
 </div>
 

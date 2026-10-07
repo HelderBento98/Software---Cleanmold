@@ -50,11 +50,6 @@ Write-Host '== 2. bibliotecas'
 Conferir $LASTEXITCODE 'A instalação das bibliotecas'
 & $py -I -m pip check
 Conferir $LASTEXITCODE 'A conferência de dependências (pip check)'
-# O redutor de malha (pyfqmr) precisa da MSVCP140.dll, que só existe no Windows com o Visual C++ instalado.
-# Vai ao lado dele a cópia que já vem dentro do numpy, com o nome que ele procura.
-$dll = Get-ChildItem (Join-Path $sp 'numpy.libs') -Filter 'msvcp140*.dll' | Select-Object -First 1
-if (-not $dll) { throw 'numpy.libs não trouxe a msvcp140: o redutor de malha não abriria em PC sem o Visual C++' }
-Copy-Item $dll.FullName (Join-Path $sp 'pyfqmr\msvcp140.dll')
 
 # ---- 3. validação com o Python que vai dentro do instalador
 Write-Host '== 3. validação'
@@ -64,7 +59,7 @@ Write-Host "::notice title=Validação em Windows::As peças de teste conferiram
 
 # ---- 4. programa + instalador
 Write-Host '== 4. instalador'
-foreach ($d in 'cleanmold', 'testes', 'exemplos') { Copy-Item (Join-Path $raiz $d) (Join-Path $arvore $d) -Recurse }
+foreach ($d in 'cleanmold', 'testes') { Copy-Item (Join-Path $raiz $d) (Join-Path $arvore $d) -Recurse }
 foreach ($f in 'Cleanmold.ico', 'LEIA-ME.html', 'LEIA-ME.md', 'requirements.txt', '_python.bat', 'ABRIR_CLEANMOLD.bat', 'VALIDAR.bat') {
   Copy-Item (Join-Path $raiz $f) $arvore
 }
@@ -99,7 +94,7 @@ foreach ($f in 'Cleanmold.pyw', 'Desinstalar.exe', 'python\pythonw.exe', 'cleanm
 }
 $atalho = Join-Path ([Environment]::GetFolderPath('Programs')) 'Cleanmold\Cleanmold.lnk'
 if (-not (Test-Path $atalho)) { throw 'O atalho do Menu Iniciar não foi criado' }
-& (Join-Path $alvo 'python\python.exe') -I -c "import numpy, scipy, trimesh, matplotlib, ezdxf, cadquery, tkinter"
+& (Join-Path $alvo 'python\python.exe') -I -c "import numpy, scipy, trimesh, tkinter"
 Conferir $LASTEXITCODE 'A carga das bibliotecas na pasta instalada'
 
 # abre como o atalho abre (pythonw, sem console) e pergunta o estado ao programa
@@ -125,13 +120,13 @@ Set-Content (Join-Path $alvo 'cleanmold\sobra_da_versao_anterior.py') '# arquivo
 $p = Start-Process $exe -ArgumentList '/S', "/D=$alvo" -Wait -PassThru
 Conferir $p.ExitCode 'A instalação por cima (atualização)'
 if (Test-Path (Join-Path $alvo 'cleanmold\sobra_da_versao_anterior.py')) { throw 'A atualização deixou um arquivo da versão anterior na pasta do programa' }
-$lida = & (Join-Path $alvo 'python\python.exe') -I -c "import sys; sys.path.insert(0, sys.argv[1]); import cleanmold, numpy, cadquery; print(cleanmold.__version__)" $alvo
+$lida = & (Join-Path $alvo 'python\python.exe') -I -c "import sys; sys.path.insert(0, sys.argv[1]); import cleanmold, numpy, scipy; print(cleanmold.__version__)" $alvo
 Conferir $LASTEXITCODE 'A carga do programa depois da atualização'
 if ("$lida".Trim() -ne $versao) { throw "Depois da atualização o programa diz ser a versão $lida, não $versao" }
 Write-Host "   instalado por cima: versão $versao"
 $p = Start-Process (Join-Path $alvo 'Desinstalar.exe') -ArgumentList '/S', "_?=$alvo" -Wait -PassThru
 Conferir $p.ExitCode 'A desinstalação silenciosa'
-foreach ($d in 'python', 'cleanmold', 'testes', 'exemplos') {
+foreach ($d in 'python', 'cleanmold', 'testes') {
   if (Test-Path (Join-Path $alvo $d)) { throw "Depois de desinstalar sobrou a pasta $d" }
 }
 if (Test-Path $atalho) { throw 'O atalho do Menu Iniciar ficou depois de desinstalar' }
@@ -140,7 +135,7 @@ Remove-Item $alvo -Recurse -Force -ErrorAction SilentlyContinue
 # pacote .zip (mesmo programa, sem o Python): para quem não puder usar o instalador
 $zipar = Join-Path $obra 'Cleanmold'
 New-Item -ItemType Directory -Force $zipar | Out-Null
-foreach ($d in 'cleanmold', 'testes', 'exemplos') { Copy-Item (Join-Path $raiz $d) (Join-Path $zipar $d) -Recurse }
+foreach ($d in 'cleanmold', 'testes') { Copy-Item (Join-Path $raiz $d) (Join-Path $zipar $d) -Recurse }
 Get-ChildItem $raiz -File | Where-Object { $_.Name -notin '.gitignore', 'README.md' } | Copy-Item -Destination $zipar
 Get-ChildItem $zipar -Recurse -Directory -Filter '__pycache__' | Remove-Item -Recurse -Force
 Compress-Archive $zipar (Join-Path $saida "Cleanmold_$versao.zip")
@@ -154,7 +149,7 @@ $novidades
 
 **Para atualizar:** feche o Cleanmold e rode este instalador por cima da versão que já está no computador. Não precisa desinstalar.
 
-Instalador validado e testado automaticamente em Windows: limpeza das peças de teste, instalação, abertura, atualização por cima e desinstalação.
+Instalador validado e testado automaticamente em Windows: retirada dos alvos das peças de teste, instalação, abertura, atualização por cima e desinstalação.
 
 **Para instalar:** baixe o ``Cleanmold_Setup_$versao.exe`` e execute. Não precisa de administrador nem de internet. O instalador não tem assinatura digital: no aviso do Windows, clique em *Mais informações > Executar assim mesmo*.
 
